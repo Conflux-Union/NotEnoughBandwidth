@@ -3,6 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.config.TConfig;
+import cn.ussshenzhou.notenoughbandwidth.network.DictionarySyncPayload;
 import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncPayload;
 import cn.ussshenzhou.notenoughbandwidth.network.NebAckPayload;
 import com.google.gson.annotations.Expose;
@@ -33,6 +34,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
         add("minecraft:finish_configuration");
         add(PacketAggregationPacket.TYPE.id().toString());
+        add(DictionarySyncPayload.TYPE.id().toString());
         add(IndexSyncPayload.TYPE.id().toString());
         add(NebAckPayload.TYPE.id().toString());
         add("minecraft:login");

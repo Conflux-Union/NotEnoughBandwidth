@@ -15,7 +15,10 @@ public record StatRespondPayload(
         double inboundSpeedBaked,
         double inboundSpeedRaw,
         double outboundSpeedBaked,
-        double outboundSpeedRaw
+        double outboundSpeedRaw,
+        int dictSize,
+        int dictSampleCount,
+        int dictSampleThreshold
 ) implements CustomPayload {
     public static final Id<StatRespondPayload> TYPE =
             new Id<>(Identifier.of(ModConstants.MOD_ID, "stat_resp"));
@@ -31,7 +34,10 @@ public record StatRespondPayload(
                     PacketCodecs.DOUBLE.decode(buf),
                     PacketCodecs.DOUBLE.decode(buf),
                     PacketCodecs.DOUBLE.decode(buf),
-                    PacketCodecs.DOUBLE.decode(buf)
+                    PacketCodecs.DOUBLE.decode(buf),
+                    PacketCodecs.VAR_INT.decode(buf),
+                    PacketCodecs.VAR_INT.decode(buf),
+                    PacketCodecs.VAR_INT.decode(buf)
             );
         }
 
@@ -45,6 +51,9 @@ public record StatRespondPayload(
             PacketCodecs.DOUBLE.encode(buf, value.inboundSpeedRaw);
             PacketCodecs.DOUBLE.encode(buf, value.outboundSpeedBaked);
             PacketCodecs.DOUBLE.encode(buf, value.outboundSpeedRaw);
+            PacketCodecs.VAR_INT.encode(buf, value.dictSize);
+            PacketCodecs.VAR_INT.encode(buf, value.dictSampleCount);
+            PacketCodecs.VAR_INT.encode(buf, value.dictSampleThreshold);
         }
     };
 

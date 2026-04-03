@@ -31,4 +31,7 @@ public class SimpleStatManager {
     public static double inboundSpeedRawServer;
     public static double outboundSpeedBakedServer;
     public static double outboundSpeedRawServer;
+    public static int dictSizeServer;
+    public static int dictSampleCountServer;
+    public static int dictSampleThresholdServer;
 }

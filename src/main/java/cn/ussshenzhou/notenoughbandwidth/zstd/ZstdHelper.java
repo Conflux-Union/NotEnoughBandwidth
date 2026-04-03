@@ -39,7 +39,7 @@ public class ZstdHelper {
     private static Context get(ClientConnection connection) {
         ZSTD_CONTEXT_CACHE.asMap().entrySet().removeIf(e -> !e.getKey().isOpen());
         try {
-            return ZSTD_CONTEXT_CACHE.get(connection, Context::new);
+            return ZSTD_CONTEXT_CACHE.get(connection, () -> new Context(DictionaryManager.getDict()));
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }

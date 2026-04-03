@@ -3,6 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth.network;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
+import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -48,7 +49,10 @@ public class ModNetworking {
                         LOCAL.inboundSpeedBaked().averageIn1s(),
                         LOCAL.inboundSpeedRaw().averageIn1s(),
                         LOCAL.outboundSpeedBaked().averageIn1s(),
-                        LOCAL.outboundSpeedRaw().averageIn1s()
+                        LOCAL.outboundSpeedRaw().averageIn1s(),
+                        DictionaryManager.getDictSize(),
+                        DictionaryManager.getSampleCount(),
+                        DictionaryManager.getSampleThreshold()
                 ));
             }
         });
@@ -68,6 +72,9 @@ public class ModNetworking {
             SimpleStatManager.inboundSpeedRawServer = payload.inboundSpeedRaw();
             SimpleStatManager.outboundSpeedBakedServer = payload.outboundSpeedBaked();
             SimpleStatManager.outboundSpeedRawServer = payload.outboundSpeedRaw();
+            SimpleStatManager.dictSizeServer = payload.dictSize();
+            SimpleStatManager.dictSampleCountServer = payload.dictSampleCount();
+            SimpleStatManager.dictSampleThresholdServer = payload.dictSampleThreshold();
         });
     }
 }

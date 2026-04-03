@@ -6,6 +6,7 @@ import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.indextype.CustomPacketPrefixHelper;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
+import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.DefaultChannelPipeline;
@@ -56,6 +57,11 @@ public class PacketAggregationPacket implements CustomPayload {
         packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
 
         int rawSize = rawBuf.readableBytes();
+        if (DictionaryManager.isSampling()) {
+            byte[] sample = new byte[rawSize];
+            rawBuf.getBytes(rawBuf.readerIndex(), sample);
+            DictionaryManager.collectSample(sample);
+        }
         boolean compress = rawSize >= 32;
         buffer.writeBoolean(compress);
         if (compress) {

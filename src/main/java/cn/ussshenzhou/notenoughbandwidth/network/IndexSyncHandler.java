@@ -2,6 +2,7 @@ package cn.ussshenzhou.notenoughbandwidth.network;
 
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
+import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -36,9 +37,14 @@ public class IndexSyncHandler {
     }
 
     public static void registerServer() {
+        PayloadTypeRegistry.playS2C().register(DictionarySyncPayload.TYPE, DictionarySyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(IndexSyncPayload.TYPE, IndexSyncPayload.CODEC);
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            // Send dictionary first so the client has it before compression starts.
+            byte[] dict = DictionaryManager.getDict();
+            sender.sendPacket(new DictionarySyncPayload(dict));
+
             List<Identifier> types = collectRegisteredTypes();
             // Only init once on dedicated server — registered types don't change after startup,
             // and re-init would race with readers that don't hold the lock.
@@ -48,12 +54,22 @@ public class IndexSyncHandler {
             // Do NOT init AggregationManager or mark connection here.
             // We wait for the client to send NebAckPayload before enabling the compression path.
             sender.sendPacket(new IndexSyncPayload(types));
-            LOGGER.info("Sent index sync to {} ({} types), awaiting NEB ack",
+            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types), awaiting NEB ack",
+                    dict != null ? dict.length + " bytes" : "none",
                     handler.player.getName().getString(), types.size());
         });
     }
 
     public static void registerClient() {
+        ClientPlayNetworking.registerGlobalReceiver(DictionarySyncPayload.TYPE, (payload, context) -> {
+            if (payload.dictionary() != null && payload.dictionary().length > 0) {
+                DictionaryManager.setDict(payload.dictionary());
+                LOGGER.info("Received dictionary from server ({} bytes)", payload.dictionary().length);
+            } else {
+                LOGGER.info("Server has no trained dictionary yet");
+            }
+        });
+
         ClientPlayNetworking.registerGlobalReceiver(IndexSyncPayload.TYPE, (payload, context) -> {
             LOGGER.info("Received index sync from server ({} types)", payload.types().size());
             NamespaceIndexManager.init(payload.types());

@@ -8,6 +8,8 @@ import com.github.luben.zstd.ZstdDecompressCtx;
 
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 
@@ -15,14 +17,20 @@ public class Context implements Closeable {
     private final ZstdCompressCtx compressCtx;
     private final ZstdDecompressCtx decompressCtx;
 
-    public Context() {
+    public Context(@Nullable byte[] dict) {
         compressCtx = new ZstdCompressCtx();
         compressCtx.setLevel(NotEnoughBandwidthConfig.get().getCompressionLevel());
         compressCtx.setContentSize(false);
         compressCtx.setMagicless(true);
         compressCtx.setWindowLog(NotEnoughBandwidthConfig.get().getContextLevel());
+        if (dict != null) {
+            compressCtx.loadDict(dict);
+        }
         decompressCtx = new ZstdDecompressCtx();
         decompressCtx.setMagicless(true);
+        if (dict != null) {
+            decompressCtx.loadDict(dict);
+        }
     }
 
     public ByteBuffer compress(ByteBuffer raw) {

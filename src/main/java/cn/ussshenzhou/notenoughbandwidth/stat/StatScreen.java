@@ -21,6 +21,8 @@ public class StatScreen extends Screen {
     private String rawS = "-";
     private String ratioS = "-";
 
+    private String dictStatus = "";
+
     private int tick = 0;
 
     public StatScreen() {
@@ -85,6 +87,14 @@ public class StatScreen extends Screen {
                     + (outboundBytesRawServer > 0
                     ? String.format("%.2f", 100d * outboundBytesBakedServer / outboundBytesRawServer) : "N/A")
                     + "%";
+
+            if (dictSizeServer > 0) {
+                dictStatus = "Zstd Dictionary  §a✔ Active§r  (" + dictSizeServer / 1024 + " KiB)";
+            } else if (dictSampleThresholdServer > 0) {
+                dictStatus = "Zstd Dictionary  §7Sampling§r  " + dictSampleCountServer + "/" + dictSampleThresholdServer;
+            } else {
+                dictStatus = "Zstd Dictionary  §7-§r";
+            }
         }
         tick++;
     }
@@ -106,6 +116,8 @@ public class StatScreen extends Screen {
         context.drawText(tr, raw, 10, 170, 0xFFFFFF, true);
         context.drawText(tr, rawS, 10, 180, 0xFFFFFF, true);
         context.drawText(tr, ratioS, 10, 200, 0xFFFFFF, true);
+
+        context.drawText(tr, dictStatus, 10, 230, 0xFFFFFF, true);
 
         super.render(context, mouseX, mouseY, delta);
     }
