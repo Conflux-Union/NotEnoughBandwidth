@@ -1,6 +1,6 @@
 # Not Enough Bandwidth (NEB) — Fabric Port
 
-**Fabric mod for Minecraft 1.21.4** — Network bandwidth optimization.
+**Fabric mod for Minecraft 1.21.4** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, and delayed chunk caching.
 
 > This is an unofficial Fabric port of the original [NeoForge mod](https://github.com/USS-Shenzhou/NotEnoughBandwidth) by USS_Shenzhou.
 > If you want to contribute to the upstream project, please discuss with USS_Shenzhou on [Discord](https://discord.gg/ZAn7U2BJpb) first.
@@ -21,39 +21,101 @@ Press **Alt+N** in-game to view the network traffic status.
 
 Optimizes `CustomPacketPayload` encoding and decoding by replacing the packet header `Identifier` (Packet Type) with a compact VarInt index. This reduces the mod network packet header overhead to a fixed 3-4 bytes, instead of the length of the string corresponding to the network packet type.
 
+> [!NOTE]
+> ### Fixed 8 bits header
+> ```
+> +------------- 1 byte (8 bits) ---------------+
+> |               function flags                 |
+> +---+---+--------------------------------------+
+> | i | t |      reserved (6 bits)               |
+> +---+---+--------------------------------------+
+> ```
+> - i = indexed (1 bit)
+> - t = tight_indexed (1 bit, only valid if i=1)
+> - reserved = 6 bits (for future use)
+>
+> ### Indexed packet type
+> - If i=0 (not indexed): full `Identifier` in UTF-8 follows.
+> - If i=1 and t=0 (indexed, NOT tight): 3 bytes — 12-bit namespace-id + 12-bit path-id (capacity 4096 each).
+> - If i=1 and t=1 (indexed, tight): 2 bytes — 8-bit namespace-id + 8-bit path-id (capacity 256 each).
+
 ### Aggregation and Compression
 
 Optimizes the situation where vanilla often produces a large number of small network packets. Intercepts transmission at the `Connection` level, assembles them into one large network packet every 20ms, and sends it after Zstd compression.
 
+> [!NOTE]
+> ```
+> +---+-----+----+----+----+----+----+----...
+> | B | (S) | p0 | s0 | d0 | p1 | s1 | d1 ...
+> +---+-----+----+----+----+----+----+----...
+>           +--packet 1---++--packet 2---+
+>           +---------compressed---------+
+> ```
+> - B = bool, whether compressed
+> - S = varint, size of uncompressed data (only present if compressed)
+> - p = prefix (medium/int/utf-8), type of this subpacket
+> - s = varint, size of this subpacket
+> - d = bytes, data of this subpacket
+
 ### Delayed Chunk Cache (DCC)
 
-In Vanilla, when a player moves, the server instructs the client to immediately forget the chunks behind them. By delaying this "forgetting", the chunk transmission traffic generated when moving back and forth can be saved.
+In Vanilla, when a player moves, the server instructs the client to immediately forget the chunks behind them; if the player returns to the original position, the full chunk data must be sent again. By delaying this "forgetting", the chunk transmission traffic generated when moving back and forth can be saved.
 
-## Config
+## Configuration
 
 Modify the configuration file at `config/NotEnoughBandwidthConfig.json`.
 
 ### compatibleMode
-Whether to enable compatibility mode. If set to `true`, the `blackList` below will be used. Works independently on client and server.
+
+> **Works independently on client and server.**
+
+Whether to enable compatibility mode. If set to `true`, the `blackList` below will be used.
 
 ### blackList
-Packets listed here will be skipped by NEB. By default, it includes command-related and player info packets. Works independently on client and server.
+
+> **Works independently on client and server.**
+
+The blacklist for compatibility mode. Packets listed here will be skipped by NEB. You can add packets as needed.
+
+> [!WARNING]
+> To ensure packet ordering, packets in the blacklist will interrupt the ongoing aggregation. If there are many packets in the blacklist, or if the corresponding packets are sent too frequently, the efficiency of aggregation-compression will decrease.
+
+### compressionLevel
+
+> **Works independently on client and server.**
+
+The Zstd compression level (integer 1-19). Default is 6. Higher values produce better compression but use more CPU.
 
 ### contextLevel
-The Zstd context window size (integer 21–25, representing 2–32MB). Default is 23 (8MB). Larger = better compression, more memory. Works independently on client and server.
+
+> **Works independently on client and server.**
+
+The Zstd context window size (integer 21-25, representing 2-32MB). Default is 23 (8MB). Larger values result in better compression but consume more memory.
+
+> [!TIP]
+> For a server with 100 players, a setting of 25 will result in approximately 3200MB of additional memory usage.
 
 ### dccSizeLimit, dccDistance, dccTimeout
-DCC parameters: max cached chunks, cache distance, cache timeout (seconds). Server only.
+
+> **Server only.**
+
+Delayed Chunk Cache (DCC) parameters: max cached chunks, cache distance, cache timeout (seconds). Larger values may consume more memory, while smaller values may trigger updates more frequently.
 
 ## Installation
 
 Requires:
 - Minecraft 1.21.4
-- Fabric Loader ≥ 0.18.0
+- Fabric Loader >= 0.18.0
 - Fabric API
+
+**Both client and server must install NEB.** When a client without NEB connects, the server falls back to vanilla behavior for that connection.
 
 ## License
 
 Copyright (C) 2025 USS_Shenzhou
 
 This mod is free software under the GNU GPL 3.0. See [LICENSE](LICENSE) for details.
+
+### Additional Permissions
+
+As a game player, when you load and play this program in Minecraft, this license automatically grants you all rights necessary, which are not covered in the GPL-3.0 license, or are prohibited by the GPL-3.0 license, for the normal loading and playing of this program in Minecraft. In case of conflicts between the GPL-3.0 license and the Minecraft EULA or other Mojang/Microsoft terms, the latter shall prevail.
