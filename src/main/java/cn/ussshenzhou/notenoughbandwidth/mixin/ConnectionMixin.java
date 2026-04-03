@@ -2,6 +2,7 @@ package cn.ussshenzhou.notenoughbandwidth.mixin;
 
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
+import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import io.netty.channel.local.LocalAddress;
 import net.minecraft.network.ClientConnection;
@@ -38,7 +39,8 @@ public abstract class ConnectionMixin {
                                     boolean flush, CallbackInfo ci) {
         if (this.getAddress() instanceof LocalAddress
                 || this.packetListener == null
-                || this.packetListener.getPhase() != NetworkPhase.PLAY) {
+                || this.packetListener.getPhase() != NetworkPhase.PLAY
+                || !NamespaceIndexManager.ready()) {
             return;
         }
         if (NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {

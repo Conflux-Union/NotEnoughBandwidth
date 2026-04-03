@@ -80,7 +80,7 @@ public class PacketAggregationPacket implements CustomPayload {
     private void encodeSubPacket(RegistryByteBuf raw, AggregatedEncodePacket packet) {
         CustomPacketPrefixHelper.write(packet.type, raw);
         var d = new RegistryByteBuf(ByteBufAllocator.DEFAULT.buffer(), raw.getRegistryManager());
-        packet.encode(d, protocolInfo, connection.getSide());
+        packet.encode(d, protocolInfo, protocolInfo.side());
         raw.writeVarInt(d.readableBytes());
         raw.writeBytes(d);
         d.release();

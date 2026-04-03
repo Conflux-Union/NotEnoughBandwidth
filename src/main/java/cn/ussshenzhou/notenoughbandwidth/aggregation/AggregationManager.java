@@ -69,7 +69,8 @@ public class AggregationManager {
             var sendPackets = new ArrayList<>(packets);
             var aggregationPayload = new PacketAggregationPacket(
                     sendPackets, encoder.state, connection);
-            Packet<?> wrapper = connection.getSide() == NetworkSide.CLIENTBOUND
+            // encoder.state.side() = outbound direction (CLIENTBOUND on server, SERVERBOUND on client)
+            Packet<?> wrapper = encoder.state.side() == NetworkSide.CLIENTBOUND
                     ? new CustomPayloadS2CPacket(aggregationPayload)
                     : new CustomPayloadC2SPacket(aggregationPayload);
             connection.send(wrapper);
