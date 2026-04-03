@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "neb",
+  "version": "${version}",
+  "name": "NotEnoughBandwidth",
+  "description": "Network bandwidth optimization for Minecraft",
+  "authors": ["USS_Shenzhou"],
+  "license": "GPL-3.0",
+  "icon": "icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidth"],
+    "client": ["cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthClient"]
+  },
+  "mixins": ["neb.mixins.json"],
+  "accessWidener": "neb.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

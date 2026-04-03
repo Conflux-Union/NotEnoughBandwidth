@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "cn.ussshenzhou.notenoughbandwidth.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ConnectionMixin",
+    "PacketEncoderMixin",
+    "PacketDecoderMixin",
+    "CustomPacketPayloadMixin",
+    "ChunkMapMixin",
+    "PlayerListMixin"
+  ],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
