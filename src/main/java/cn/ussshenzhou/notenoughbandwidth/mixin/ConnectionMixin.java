@@ -3,6 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth.mixin;
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
+import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import io.netty.channel.local.LocalAddress;
 import net.minecraft.network.ClientConnection;
@@ -41,6 +42,10 @@ public abstract class ConnectionMixin {
                 || this.packetListener == null
                 || this.packetListener.getPhase() != NetworkPhase.PLAY
                 || !NamespaceIndexManager.ready()) {
+            return;
+        }
+        // Vanilla client: no NEB ack was received, fall through to vanilla send path.
+        if (!NebConnectionRegistry.isEnabled((ClientConnection) (Object) this)) {
             return;
         }
         if (NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {

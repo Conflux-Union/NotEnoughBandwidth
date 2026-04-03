@@ -41,9 +41,11 @@ public class IndexSyncHandler {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             List<Identifier> types = collectRegisteredTypes();
             NamespaceIndexManager.init(types);
-            AggregationManager.init();
+            // Do NOT init AggregationManager or mark connection here.
+            // We wait for the client to send NebAckPayload before enabling the compression path.
             sender.sendPacket(new IndexSyncPayload(types));
-            LOGGER.info("Sent index sync to {} ({} types)", handler.player.getName().getString(), types.size());
+            LOGGER.info("Sent index sync to {} ({} types), awaiting NEB ack",
+                    handler.player.getName().getString(), types.size());
         });
     }
 
@@ -52,6 +54,10 @@ public class IndexSyncHandler {
             LOGGER.info("Received index sync from server ({} types)", payload.types().size());
             NamespaceIndexManager.init(payload.types());
             AggregationManager.init();
+            // Mark our outbound connection as NEB-capable (server always has NEB if it sent this).
+            NebConnectionRegistry.markEnabled(context.player().networkHandler.connection);
+            // Tell the server we have NEB installed so it enables the compression path for us.
+            ClientPlayNetworking.send(new NebAckPayload());
         });
     }
 

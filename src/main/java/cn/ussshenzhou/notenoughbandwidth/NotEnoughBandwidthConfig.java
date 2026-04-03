@@ -4,6 +4,7 @@ import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.config.TConfig;
 import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncPayload;
+import cn.ussshenzhou.notenoughbandwidth.network.NebAckPayload;
 import com.google.gson.annotations.Expose;
 import net.minecraft.util.math.MathHelper;
 
@@ -32,6 +33,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add("minecraft:finish_configuration");
         add(PacketAggregationPacket.TYPE.id().toString());
         add(IndexSyncPayload.TYPE.id().toString());
+        add(NebAckPayload.TYPE.id().toString());
         add("minecraft:login");
     }};
 
