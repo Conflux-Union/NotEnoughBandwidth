@@ -23,6 +23,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add("minecraft:player_info_remove");
     }};
     public boolean debugLog = false;
+    public int compressionLevel = 6;
     public int contextLevel = 23;
     public int dccSizeLimit = 60;
     public int dccDistance = 5;
@@ -44,6 +45,10 @@ public class NotEnoughBandwidthConfig implements TConfig {
     public static boolean skipType(String type) {
         var cfg = get();
         return COMMON_BLOCK_LIST.contains(type) || (cfg.compatibleMode && cfg.blackList.contains(type));
+    }
+
+    public int getCompressionLevel() {
+        return MathHelper.clamp(compressionLevel, 1, 19);
     }
 
     public int getContextLevel() {

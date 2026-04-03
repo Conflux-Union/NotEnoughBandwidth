@@ -40,7 +40,11 @@ public class IndexSyncHandler {
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             List<Identifier> types = collectRegisteredTypes();
-            NamespaceIndexManager.init(types);
+            // Only init once on dedicated server — registered types don't change after startup,
+            // and re-init would race with readers that don't hold the lock.
+            if (!NamespaceIndexManager.ready()) {
+                NamespaceIndexManager.init(types);
+            }
             // Do NOT init AggregationManager or mark connection here.
             // We wait for the client to send NebAckPayload before enabling the compression path.
             sender.sendPacket(new IndexSyncPayload(types));

@@ -19,8 +19,7 @@ public abstract class ChunkMapMixin {
     ServerWorld world;
 
     @Unique
-    private static final ChunkTicketType<ChunkPos> NEB_DCC_TICKET =
-            ChunkTicketType.create("neb_dcc", Comparator.comparingLong(ChunkPos::toLong), 20);
+    private static volatile ChunkTicketType<ChunkPos> nebDccTicket;
 
     @Shadow
     int getViewDistance(ServerPlayerEntity player) { throw new AssertionError(); }
@@ -57,9 +56,9 @@ public abstract class ChunkMapMixin {
 
             @Override
             public void putTicket(ChunkPos pos, int ticks) {
-                var ticketType = NEB_DCC_TICKET;
-                if (ticketType.getExpiryTicks() != ticks) {
-                    ticketType = ChunkTicketType.create("neb_dcc",
+                var ticketType = nebDccTicket;
+                if (ticketType == null || ticketType.getExpiryTicks() != ticks) {
+                    ticketType = nebDccTicket = ChunkTicketType.create("neb_dcc",
                             Comparator.comparingLong(ChunkPos::toLong), ticks);
                 }
                 ticketManager.addTicket(ticketType, pos, 1, pos);

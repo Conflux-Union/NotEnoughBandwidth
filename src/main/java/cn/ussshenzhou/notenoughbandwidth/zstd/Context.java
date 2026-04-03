@@ -6,6 +6,8 @@ import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdCompressCtx;
 import com.github.luben.zstd.ZstdDecompressCtx;
 
+import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
+
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 
@@ -15,7 +17,7 @@ public class Context implements Closeable {
 
     public Context() {
         compressCtx = new ZstdCompressCtx();
-        compressCtx.setLevel(3);
+        compressCtx.setLevel(NotEnoughBandwidthConfig.get().getCompressionLevel());
         compressCtx.setContentSize(false);
         compressCtx.setMagicless(true);
         compressCtx.setWindowLog(NotEnoughBandwidthConfig.get().getContextLevel());

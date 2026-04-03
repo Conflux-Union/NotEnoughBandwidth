@@ -18,7 +18,10 @@ import java.util.concurrent.*;
 
 public class AggregationManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
+    private static final int MIN_BATCH_PACKETS = 4;
+    private static final int MAX_EXTRA_CYCLES = 2;
     private static final WeakHashMap<ClientConnection, ArrayList<AggregatedEncodePacket>> PACKET_BUFFER = new WeakHashMap<>();
+    private static final WeakHashMap<ClientConnection, Integer> FLUSH_WAIT = new WeakHashMap<>();
     private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(
             new ThreadFactoryBuilder().setNameFormat("NEB-Flush-thread").setDaemon(true).build());
     private static final ArrayList<ScheduledFuture<?>> TASKS = new ArrayList<>();
@@ -44,14 +47,31 @@ public class AggregationManager {
 
     private synchronized static void flush() {
         PACKET_BUFFER.entrySet().removeIf(e -> !e.getKey().isOpen());
-        PACKET_BUFFER.forEach(AggregationManager::flushInternal);
+        FLUSH_WAIT.entrySet().removeIf(e -> !e.getKey().isOpen());
+        PACKET_BUFFER.forEach((connection, packets) -> {
+            if (packets == null || packets.isEmpty()) {
+                return;
+            }
+            if (packets.size() < MIN_BATCH_PACKETS) {
+                int waited = FLUSH_WAIT.getOrDefault(connection, 0);
+                if (waited < MAX_EXTRA_CYCLES) {
+                    FLUSH_WAIT.put(connection, waited + 1);
+                    return;
+                }
+            }
+            FLUSH_WAIT.remove(connection);
+            flushInternal(connection, packets);
+        });
     }
 
     public synchronized static void flushConnection(ClientConnection connection) {
-        TIMER.execute(() -> {
-            PACKET_BUFFER.entrySet().removeIf(e -> !e.getKey().isOpen());
-            flushInternal(connection, PACKET_BUFFER.get(connection));
-        });
+        TIMER.execute(() -> flushConnectionInternal(connection));
+    }
+
+    private synchronized static void flushConnectionInternal(ClientConnection connection) {
+        PACKET_BUFFER.entrySet().removeIf(e -> !e.getKey().isOpen());
+        FLUSH_WAIT.remove(connection);
+        flushInternal(connection, PACKET_BUFFER.get(connection));
     }
 
     private synchronized static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
