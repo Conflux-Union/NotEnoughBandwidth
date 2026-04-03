@@ -14,29 +14,23 @@ import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Wraps a single packet for encoding into an aggregated blob.
+ * <p>
+ * All packets (vanilla and modded custom payloads) are encoded through
+ * the vanilla dispatch codec. Custom payloads are already wrapped in
+ * CustomPayloadS2C/C2SPacket which the dispatch codec knows how to handle.
+ * The type prefix is written separately by CustomPacketPrefixHelper.
+ */
 @SuppressWarnings("DataFlowIssue")
 public class AggregatedEncodePacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Encode");
 
     public final Identifier type;
-    private final boolean isMinecraft;
     private final Packet<?> packet;
-    private final CustomPayload payload;
 
     public AggregatedEncodePacket(Packet<?> p, Identifier type) {
-        if (p instanceof CustomPayloadC2SPacket cp) {
-            this.isMinecraft = false;
-            this.packet = p;
-            this.payload = cp.payload();
-        } else if (p instanceof CustomPayloadS2CPacket cp) {
-            this.isMinecraft = false;
-            this.packet = p;
-            this.payload = cp.payload();
-        } else {
-            this.isMinecraft = true;
-            this.packet = p;
-            this.payload = null;
-        }
+        this.packet = p;
         this.type = type;
     }
 
@@ -52,11 +46,7 @@ public class AggregatedEncodePacket {
         var entry = (PacketCodecDispatcher.PacketType) vanillaCodec.packetTypes.get(id);
         var codec = (PacketCodec<ByteBuf, Packet<?>>) entry.codec();
         try {
-            if (isMinecraft) {
-                codec.encode(buf, packet);
-            } else {
-                codec.encode(buf, packet);
-            }
+            codec.encode(buf, packet);
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to encode packet {}", type, e);
         }

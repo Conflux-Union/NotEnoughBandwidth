@@ -75,7 +75,7 @@ public class CachedChunkTrackingView implements ChunkFilter {
             CachedChunkTrackingView cachedView = new CachedChunkTrackingView(nextPositioned);
             ChunkFilter.forEachChangedChunk(currentView, cachedView,
                     context::startChunkTracking, context::stopChunkTracking);
-            // TODO: set player's chunk filter to cachedView via accessor mixin
+            player.setChunkFilter(cachedView);
         }
     }
 

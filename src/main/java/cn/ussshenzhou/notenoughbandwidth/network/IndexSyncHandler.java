@@ -6,29 +6,34 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.lang.reflect.Field;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Handles index table synchronization between server and client.
+ * Synchronizes the payload type index table between server and client.
  * <p>
- * On NeoForge, this was free via the modded network negotiation.
- * On Fabric, we implement it ourselves:
- * <ol>
- *   <li>Server collects all registered CustomPayload types from both S2C and C2S registries</li>
- *   <li>Server sorts them deterministically and builds its index table</li>
- *   <li>Server sends the sorted list to the client via IndexSyncPayload</li>
- *   <li>Client receives the list and builds the same index table</li>
- *   <li>Both sides are now synchronized for the PLAY phase</li>
- * </ol>
+ * On NeoForge this was free via modded network negotiation.
+ * On Fabric we do it ourselves: server collects all registered CustomPayload
+ * types, sorts them, sends the list to the client on join.
  */
 public class IndexSyncHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-IndexSync");
+    private static Field packetTypesField;
+
+    static {
+        try {
+            packetTypesField = PayloadTypeRegistryImpl.class.getDeclaredField("packetTypes");
+            packetTypesField.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            LOGGER.error("Failed to access PayloadTypeRegistryImpl.packetTypes", e);
+        }
+    }
 
     public static void registerServer() {
         PayloadTypeRegistry.playS2C().register(IndexSyncPayload.TYPE, IndexSyncPayload.CODEC);
@@ -50,28 +55,21 @@ public class IndexSyncHandler {
         });
     }
 
-    /**
-     * Collect all registered custom payload type Identifiers from Fabric's
-     * PayloadTypeRegistry for the PLAY phase (both S2C and C2S).
-     */
+    @SuppressWarnings("unchecked")
     private static List<Identifier> collectRegisteredTypes() {
-        var types = new ArrayList<Identifier>();
-
-        // Collect from S2C registry
-        var s2cRegistry = PayloadTypeRegistry.playS2C();
-        // Collect from C2S registry
-        var c2sRegistry = PayloadTypeRegistry.playC2S();
-
-        // The PayloadTypeRegistry doesn't directly expose iteration,
-        // so we need to collect types that were registered.
-        // For now, we'll maintain a manual registry of known types.
-        // TODO: Find a way to enumerate all registered payload types from Fabric API,
-        // or maintain a parallel registry during mod initialization.
-        //
-        // As a workaround, we can mixin into PayloadTypeRegistry to intercept
-        // registrations and collect the identifiers.
-
-        types.sort(Comparator.comparing(Identifier::getNamespace).thenComparing(Identifier::getPath));
-        return types;
+        Set<Identifier> types = new LinkedHashSet<>();
+        try {
+            if (packetTypesField != null) {
+                var s2cMap = (Map<Identifier, ?>) packetTypesField.get(PayloadTypeRegistryImpl.PLAY_S2C);
+                var c2sMap = (Map<Identifier, ?>) packetTypesField.get(PayloadTypeRegistryImpl.PLAY_C2S);
+                types.addAll(s2cMap.keySet());
+                types.addAll(c2sMap.keySet());
+            }
+        } catch (IllegalAccessException e) {
+            LOGGER.error("Failed to read registered payload types", e);
+        }
+        return types.stream()
+                .sorted(Comparator.comparing(Identifier::getNamespace).thenComparing(Identifier::getPath))
+                .collect(Collectors.toList());
     }
 }

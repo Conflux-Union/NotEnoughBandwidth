@@ -11,6 +11,13 @@ import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Wraps a single sub-packet extracted from an aggregated blob for decoding.
+ * <p>
+ * All packets (vanilla and modded custom payloads) are decoded through
+ * the vanilla dispatch codec, since custom payloads are wrapped in
+ * CustomPayloadS2C/C2SPacket.
+ */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class AggregatedDecodePacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Decode");
