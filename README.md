@@ -1,6 +1,6 @@
 # Not Enough Bandwidth (NEB) — Fabric Port
 
-**Fabric mod for Minecraft 1.21.4** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, and delayed chunk caching.
+**Fabric mod for Minecraft 1.21.4** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, and persistent client-side chunk deduplication.
 
 > **Need support or a port for another version?**
 > Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
@@ -64,6 +64,10 @@ Optimizes the situation where vanilla often produces a large number of small net
 
 In Vanilla, when a player moves, the server instructs the client to immediately forget the chunks behind them; if the player returns to the original position, the full chunk data must be sent again. By delaying this "forgetting", the chunk transmission traffic generated when moving back and forth can be saved.
 
+### Persistent Chunk Cache (PCC)
+
+Caches chunk data persistently on the client side using a local LevelDB database, keyed by a 64-bit content hash. On each connection, the client sends a Bloom Filter of all cached chunk hashes to the server. When the server is about to send a chunk whose hash is in the filter, it sends only the 20-byte hash instead of the full packet (~10–20 KB). The client loads the chunk from its local database. On a Bloom Filter false positive, the client requests the full data as a fallback. The Bloom Filter is refreshed every 64 newly cached chunks so the optimization takes effect within the same session.
+
 ## Configuration
 
 Modify the configuration file at `config/NotEnoughBandwidthConfig.json`.
@@ -103,6 +107,18 @@ The Zstd context window size (integer 21-25, representing 2-32MB). Default is 23
 > **Server only.**
 
 Delayed Chunk Cache (DCC) parameters: max cached chunks, cache distance, cache timeout (seconds). Larger values may consume more memory, while smaller values may trigger updates more frequently.
+
+### chunkCacheEnabled
+
+> **Client only.**
+
+Whether to enable the Persistent Chunk Cache. Default is `true`.
+
+### chunkCacheMaxSizeMB
+
+> **Client only.**
+
+Maximum size of the local chunk cache database in megabytes. Default is `2048` (2 GB).
 
 ## Installation
 
