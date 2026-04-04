@@ -139,7 +139,7 @@ public final class ChunkHashUtil {
                 hasher.putInt(a.size());
                 for (long l : a.getLongArray()) hasher.putLong(l);
             }
-            default -> {}
+            default -> LOGGER.warn("Unknown NBT type {} in chunk hash, hash may be unstable", element.getType());
         }
     }
 }

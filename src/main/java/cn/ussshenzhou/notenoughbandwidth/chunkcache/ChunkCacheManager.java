@@ -149,33 +149,20 @@ public class ChunkCacheManager {
     }
 
     /**
-     * Runs DB eviction (disk I/O heavy) and, if entries were deleted, rebuilds the
-     * bloom filter so it no longer contains hashes for entries that no longer exist.
+     * Runs DB eviction and rebuilds the bloom filter so it no longer contains
+     * hashes for entries that were deleted.
      *
-     * Must NOT be called while holding the ChunkCacheManager class monitor — eviction
-     * invokes {@code Files.walk} and LevelDB compaction, which can block for tens of ms
-     * and would stall all other synchronized operations on this class.
-     * Call this after {@link #drainAndShouldResend()} returns true, before fetching
-     * the bloom filter bytes to send.
+     * Synchronized to prevent new cache writes from racing between eviction
+     * and bloom filter rebuild, which would leave the filter in an
+     * inconsistent state (stale entries present, new entries missing).
      */
-    public static void evictAndRebuildIfNeeded() {
-        // Read clientDb reference under lock, then release before doing I/O.
-        ChunkCacheDatabase db;
-        synchronized (ChunkCacheManager.class) {
-            db = clientDb;
-        }
-        if (db == null) return;
+    public static synchronized void evictAndRebuildIfNeeded() {
+        if (clientDb == null) return;
 
-        // evictIfNeeded does Files.walk + LevelDB ops — runs outside the class monitor.
-        boolean evicted = db.evictIfNeeded();
+        boolean evicted = clientDb.evictIfNeeded();
 
         if (evicted) {
-            // Bloom filter update requires the lock (modifies clientBloomFilter).
-            synchronized (ChunkCacheManager.class) {
-                if (clientDb != null) {
-                    rebuildClientBloomFilter();
-                }
-            }
+            rebuildClientBloomFilter();
         }
     }
 

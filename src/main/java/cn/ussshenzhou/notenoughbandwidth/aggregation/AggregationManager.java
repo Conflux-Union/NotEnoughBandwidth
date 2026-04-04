@@ -22,14 +22,14 @@ public class AggregationManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
     private static final int MIN_BATCH_PACKETS = 4;
     private static final int MAX_EXTRA_CYCLES = 2;
-    private static final WeakHashMap<ClientConnection, ArrayList<AggregatedEncodePacket>> PACKET_BUFFER = new WeakHashMap<>();
-    private static final WeakHashMap<ClientConnection, Integer> FLUSH_WAIT = new WeakHashMap<>();
+    private static final ConcurrentHashMap<ClientConnection, ArrayList<AggregatedEncodePacket>> PACKET_BUFFER = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<ClientConnection, Integer> FLUSH_WAIT = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(
             new ThreadFactoryBuilder().setNameFormat("NEB-Flush-thread").setDaemon(true).build());
     private static final ArrayList<ScheduledFuture<?>> TASKS = new ArrayList<>();
     private static volatile boolean initialized = false;
 
-    public synchronized static void init() {
+    public static synchronized void init() {
         if (initialized) {
             return;
         }
@@ -41,36 +41,46 @@ public class AggregationManager {
         initialized = true;
     }
 
-    public synchronized static void takeOver(Packet<?> packet, ClientConnection connection) {
+    public static void takeOver(Packet<?> packet, ClientConnection connection) {
         var type = PacketUtil.getTrueType(packet);
-        PACKET_BUFFER.computeIfAbsent(connection, k -> new ArrayList<>())
-                .add(new AggregatedEncodePacket(packet, type));
+        var list = PACKET_BUFFER.computeIfAbsent(connection, k -> new ArrayList<>());
+        synchronized (list) {
+            list.add(new AggregatedEncodePacket(packet, type));
+        }
     }
 
-    private synchronized static void flush() {
-        PACKET_BUFFER.entrySet().removeIf(e -> !e.getKey().isOpen());
-        FLUSH_WAIT.entrySet().removeIf(e -> !e.getKey().isOpen());
-        PACKET_BUFFER.forEach((connection, packets) -> {
-            if (packets == null || packets.isEmpty()) {
-                return;
+    private static void flush() {
+        // Purge dead connections without holding a global lock.
+        PACKET_BUFFER.keySet().removeIf(c -> !c.isOpen());
+        FLUSH_WAIT.keySet().removeIf(c -> !c.isOpen());
+        for (var entry : PACKET_BUFFER.entrySet()) {
+            var connection = entry.getKey();
+            var packets = entry.getValue();
+            if (packets == null) {
+                continue;
             }
-            if (packets.size() < MIN_BATCH_PACKETS) {
-                int waited = FLUSH_WAIT.getOrDefault(connection, 0);
-                if (waited < MAX_EXTRA_CYCLES) {
-                    FLUSH_WAIT.put(connection, waited + 1);
-                    return;
+            synchronized (packets) {
+                if (packets.isEmpty()) {
+                    continue;
                 }
+                if (packets.size() < MIN_BATCH_PACKETS) {
+                    int waited = FLUSH_WAIT.getOrDefault(connection, 0);
+                    if (waited < MAX_EXTRA_CYCLES) {
+                        FLUSH_WAIT.put(connection, waited + 1);
+                        continue;
+                    }
+                }
+                FLUSH_WAIT.remove(connection);
+                flushInternal(connection, packets);
             }
-            FLUSH_WAIT.remove(connection);
-            flushInternal(connection, packets);
-        });
+        }
     }
 
-    public synchronized static void flushConnection(ClientConnection connection) {
+    public static void flushConnection(ClientConnection connection) {
         TIMER.execute(() -> flushConnectionInternal(connection));
     }
 
-    public synchronized static void discardConnection(ClientConnection connection) {
+    public static void discardConnection(ClientConnection connection) {
         var packets = PACKET_BUFFER.remove(connection);
         if (packets != null) {
             packets.clear();
@@ -78,13 +88,17 @@ public class AggregationManager {
         FLUSH_WAIT.remove(connection);
     }
 
-    private synchronized static void flushConnectionInternal(ClientConnection connection) {
-        PACKET_BUFFER.entrySet().removeIf(e -> !e.getKey().isOpen());
+    private static void flushConnectionInternal(ClientConnection connection) {
+        PACKET_BUFFER.keySet().removeIf(c -> !c.isOpen());
         FLUSH_WAIT.remove(connection);
-        flushInternal(connection, PACKET_BUFFER.get(connection));
+        var packets = PACKET_BUFFER.get(connection);
+        if (packets == null) return;
+        synchronized (packets) {
+            flushInternal(connection, packets);
+        }
     }
 
-    private synchronized static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
+    private static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
         try {
             if (packets == null || packets.isEmpty()) {
                 return;

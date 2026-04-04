@@ -25,17 +25,17 @@ public class SimpleStatManager {
         LOCAL.outboundSpeedRaw().put(size);
     }
 
-    public static long inboundBytesBakedServer;
-    public static long inboundBytesRawServer;
-    public static long outboundBytesBakedServer;
-    public static long outboundBytesRawServer;
-    public static double inboundSpeedBakedServer;
-    public static double inboundSpeedRawServer;
-    public static double outboundSpeedBakedServer;
-    public static double outboundSpeedRawServer;
-    public static int dictSizeServer;
-    public static int dictSampleCountServer;
-    public static int dictSampleThresholdServer;
+    public static volatile long inboundBytesBakedServer;
+    public static volatile long inboundBytesRawServer;
+    public static volatile long outboundBytesBakedServer;
+    public static volatile long outboundBytesRawServer;
+    public static volatile double inboundSpeedBakedServer;
+    public static volatile double inboundSpeedRawServer;
+    public static volatile double outboundSpeedBakedServer;
+    public static volatile double outboundSpeedRawServer;
+    public static volatile int dictSizeServer;
+    public static volatile int dictSampleCountServer;
+    public static volatile int dictSampleThresholdServer;
 
     // Server-side chunk cache counters (written by ChunkDataSenderMixin on the server).
     public static final AtomicLong chunkCacheHits = new AtomicLong();
@@ -43,7 +43,7 @@ public class SimpleStatManager {
     public static final AtomicLong chunkCacheSavedBytes = new AtomicLong();
 
     // Client-side display copies received via StatRespondPayload.
-    public static long chunkCacheHitsServer;
-    public static long chunkCacheMissesServer;
-    public static long chunkCacheSavedBytesServer;
+    public static volatile long chunkCacheHitsServer;
+    public static volatile long chunkCacheMissesServer;
+    public static volatile long chunkCacheSavedBytesServer;
 }

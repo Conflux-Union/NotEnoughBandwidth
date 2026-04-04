@@ -34,12 +34,12 @@ public class DefaultChannelPipelineHelper {
             Object tail = TAIL.get(pipeline);
             var ctx = (ChannelHandlerContext) NEXT.get(head);
             if (ctx == null) return null;
-            do {
+            while (ctx != null && ctx != tail) {
                 if (ctx.handler() instanceof EncoderHandler<?> encoder) {
                     return encoder;
                 }
                 ctx = (ChannelHandlerContext) NEXT.get(ctx);
-            } while (ctx != tail);
+            }
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -52,12 +52,11 @@ public class DefaultChannelPipelineHelper {
             Object head = HEAD.get(pipeline);
             Object tail = TAIL.get(pipeline);
             var ctx = (ChannelHandlerContext) NEXT.get(head);
-            while (true) {
+            while (ctx != null && ctx != tail) {
                 if (ctx.handler() instanceof DecoderHandler<?> decoder) {
                     return decoder;
                 }
                 ctx = (ChannelHandlerContext) NEXT.get(ctx);
-                if (ctx == tail) break;
             }
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);

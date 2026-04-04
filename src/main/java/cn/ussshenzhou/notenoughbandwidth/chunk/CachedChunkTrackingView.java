@@ -97,7 +97,7 @@ public class CachedChunkTrackingView implements ChunkFilter {
                 }
             }, chunkPos -> {
                 if (next.center().getChebyshevDistance(chunkPos) <= chunkCacheDistance) {
-                    context.putTicket(player.getWatchedSection().toChunkPos(), chunkCacheTimeout * 20);
+                    context.putTicket(chunkPos, chunkCacheTimeout * 20);
                     cache.put(chunkPos.toLong(), now);
                 }
             });

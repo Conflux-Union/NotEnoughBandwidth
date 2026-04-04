@@ -60,7 +60,11 @@ public class DictionaryManager {
     }
 
     public static boolean isSampling() {
-        return serverSide && currentDict == null && !training.get();
+        // Read training flag first — if training just started, bail out early
+        // before touching the other fields. Not perfectly atomic but good enough
+        // since collectSample re-checks under the samples lock.
+        if (training.get()) return false;
+        return serverSide && currentDict == null;
     }
 
     public static int getDictSize() {
@@ -83,6 +87,10 @@ public class DictionaryManager {
             return;
         }
         synchronized (samples) {
+            // Re-check under lock: training may have started between isSampling() and here.
+            if (currentDict != null || training.get()) {
+                return;
+            }
             if (totalSampleBytes >= MAX_SAMPLE_BYTES) {
                 return;
             }

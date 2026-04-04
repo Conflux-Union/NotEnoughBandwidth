@@ -6,8 +6,6 @@ import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdCompressCtx;
 import com.github.luben.zstd.ZstdDecompressCtx;
 
-import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
-
 import org.jetbrains.annotations.Nullable;
 
 import java.io.Closeable;
