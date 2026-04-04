@@ -12,7 +12,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * LevelDB-backed persistent store for chunk data, keyed by 64-bit content hash.
@@ -22,6 +26,7 @@ public class ChunkCacheDatabase implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-ChunkCacheDB");
 
     private final DB db;
+    private final Path dbDir;
     private final long maxSizeBytes;
 
     public ChunkCacheDatabase(Path dir, long maxSizeBytes) throws IOException {
@@ -29,12 +34,17 @@ public class ChunkCacheDatabase implements AutoCloseable {
                 .createIfMissing(true)
                 .cacheSize(32 * 1024 * 1024); // 32MB read cache
         this.db = Iq80DBFactory.factory.open(dir.toFile(), options);
+        this.dbDir = dir;
         this.maxSizeBytes = maxSizeBytes;
         LOGGER.info("Opened chunk cache DB at {}", dir);
     }
 
     public void put(long hash, byte[] data) {
         db.put(longToBytes(hash), data);
+    }
+
+    public void delete(long hash) {
+        db.delete(longToBytes(hash));
     }
 
     @Nullable
@@ -62,16 +72,74 @@ public class ChunkCacheDatabase implements AutoCloseable {
     }
 
     /**
-     * Approximate on-disk size in bytes. Used to decide whether to evict.
-     * LevelDB reports byte ranges which we sum as an approximation.
+     * Returns the actual on-disk size of the DB directory in bytes.
      */
     public long approximateSize() {
-        // iq80 DB doesn't expose getApproximateSizes directly, fall back to property
-        try {
-            String prop = db.getProperty("leveldb.approximate-memory-usage");
-            if (prop != null) return Long.parseLong(prop);
-        } catch (Exception ignored) {}
-        return 0L;
+        try (Stream<Path> walk = Files.walk(dbDir)) {
+            return walk.filter(Files::isRegularFile)
+                       .mapToLong(p -> {
+                           try { return Files.size(p); } catch (IOException e) { return 0L; }
+                       })
+                       .sum();
+        } catch (IOException e) {
+            LOGGER.warn("Failed to measure chunk cache size", e);
+            return 0L;
+        }
+    }
+
+    /**
+     * Deletes entries (in key-iteration order) until the DB is at 70% of max capacity.
+     * Estimates average entry size by sampling the first few values — avoids dividing the
+     * raw filesystem size (which includes LevelDB metadata) by entry count, which would
+     * systematically over-estimate and delete too many entries.
+     *
+     * @return true if any entries were deleted
+     */
+    public boolean evictIfNeeded() {
+        if (maxSizeBytes <= 0) return false;
+        long currentSize = approximateSize();
+        if (currentSize <= maxSizeBytes) return false;
+
+        long targetSize = (long) (maxSizeBytes * 0.7);
+        long bytesToFree = currentSize - targetSize;
+
+        // Sample the first few values to get a realistic average entry size.
+        // Chunk values are typically 10-20 KB each; sampling 10 is cheap and accurate.
+        long sampledBytes = 0;
+        int sampledCount = 0;
+        try (DBIterator it = db.iterator()) {
+            for (it.seekToFirst(); it.hasNext() && sampledCount < 10; it.next(), sampledCount++) {
+                byte[] v = it.peekNext().getValue();
+                sampledBytes += (v != null ? v.length : 0) + 8; // 8 bytes per key
+            }
+        } catch (IOException e) {
+            LOGGER.error("Failed to sample entries for eviction", e);
+            return false;
+        }
+        if (sampledCount == 0) return false;
+
+        long avgEntrySize = sampledBytes / sampledCount;
+        long entriesToDelete = avgEntrySize > 0 ? (bytesToFree / avgEntrySize) + 1 : sampledCount;
+
+        // Collect keys first — do not delete while iterating.
+        List<byte[]> keysToDelete = new ArrayList<>((int) entriesToDelete);
+        try (DBIterator it = db.iterator()) {
+            for (it.seekToFirst(); it.hasNext() && keysToDelete.size() < entriesToDelete; it.next()) {
+                keysToDelete.add(it.peekNext().getKey());
+            }
+        } catch (IOException e) {
+            LOGGER.error("Failed to collect keys for eviction", e);
+            return false;
+        }
+
+        for (byte[] key : keysToDelete) {
+            db.delete(key);
+        }
+
+        try { db.compactRange(null, null); } catch (Exception ignored) {}
+        LOGGER.info("Evicted {} entries from chunk cache (was {} MB, target {} MB)",
+                keysToDelete.size(), currentSize / 1024 / 1024, targetSize / 1024 / 1024);
+        return !keysToDelete.isEmpty();
     }
 
     public long getMaxSizeBytes() {

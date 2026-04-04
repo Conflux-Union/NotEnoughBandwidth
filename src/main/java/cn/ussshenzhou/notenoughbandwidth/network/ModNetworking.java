@@ -132,9 +132,10 @@ public class ModNetworking {
                 chunkData = new ChunkData(buf, x, z);
                 lightData = new LightData(buf, x, z);
             } catch (Exception e) {
-                LOGGER.error("Failed to deserialize cached chunk ({},{}), requesting full data",
+                LOGGER.error("Failed to deserialize cached chunk ({},{}), evicting corrupt entry and requesting full data",
                         payload.chunkX(), payload.chunkZ(), e);
-                // Graceful fallback: request the real packet.
+                // Remove the corrupt entry so we don't hit the same failure on every future load.
+                ChunkCacheManager.deleteClientCachedChunk(payload.contentHash());
                 ClientPlayNetworking.send(new ChunkRequestPayload(payload.chunkX(), payload.chunkZ()));
                 return;
             } finally {

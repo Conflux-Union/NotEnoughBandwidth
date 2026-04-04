@@ -65,7 +65,10 @@ public class ClientChunkCacheMixin {
 
             // When enough new chunks have been cached, push the updated bloom filter to the server
             // so it can start skipping them in the current session (not just after reconnect).
+            // evictAndRebuildIfNeeded runs here (off-thread, outside class monitor) so that
+            // Files.walk + LevelDB compaction don't block the main synchronized operations.
             if (ChunkCacheManager.drainAndShouldResend()) {
+                ChunkCacheManager.evictAndRebuildIfNeeded();
                 byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
                 if (bloomBytes != null) {
                     MinecraftClient.getInstance().execute(() -> {

@@ -39,7 +39,7 @@ public class ChunkCacheManager {
 
     // How many new chunks must be cached before we push an updated bloom filter to the server.
     private static final int RESEND_THRESHOLD = 64;
-    private static volatile int pendingNewChunks = 0;
+    private static int pendingNewChunks = 0;
 
     // --- Server state ---
     // Separate lock object so server-side bloom filter operations don't contend
@@ -114,6 +114,10 @@ public class ChunkCacheManager {
         return clientDb.get(hash);
     }
 
+    public static synchronized void deleteClientCachedChunk(long hash) {
+        if (clientDb != null) clientDb.delete(hash);
+    }
+
     public static synchronized void cacheChunk(long hash, byte[] data) {
         if (clientDb == null) return;
         clientDb.put(hash, data);
@@ -130,11 +134,47 @@ public class ChunkCacheManager {
      * dispatching the actual packet send to the main thread.
      */
     public static synchronized boolean drainAndShouldResend() {
-        if (pendingNewChunks >= RESEND_THRESHOLD) {
-            pendingNewChunks = 0;
-            return true;
+        if (pendingNewChunks < RESEND_THRESHOLD) return false;
+        pendingNewChunks = 0;
+        return true;
+    }
+
+    /**
+     * Runs DB eviction (disk I/O heavy) and, if entries were deleted, rebuilds the
+     * bloom filter so it no longer contains hashes for entries that no longer exist.
+     *
+     * Must NOT be called while holding the ChunkCacheManager class monitor — eviction
+     * invokes {@code Files.walk} and LevelDB compaction, which can block for tens of ms
+     * and would stall all other synchronized operations on this class.
+     * Call this after {@link #drainAndShouldResend()} returns true, before fetching
+     * the bloom filter bytes to send.
+     */
+    public static void evictAndRebuildIfNeeded() {
+        // Read clientDb reference under lock, then release before doing I/O.
+        ChunkCacheDatabase db;
+        synchronized (ChunkCacheManager.class) {
+            db = clientDb;
         }
-        return false;
+        if (db == null) return;
+
+        // evictIfNeeded does Files.walk + LevelDB ops — runs outside the class monitor.
+        boolean evicted = db.evictIfNeeded();
+
+        if (evicted) {
+            // Bloom filter update requires the lock (modifies clientBloomFilter).
+            synchronized (ChunkCacheManager.class) {
+                if (clientDb != null) {
+                    rebuildClientBloomFilter();
+                }
+            }
+        }
+    }
+
+    private static void rebuildClientBloomFilter() {
+        LongSet hashes = clientDb.getAllHashes();
+        clientBloomFilter = BloomFilter.create(Funnels.longFunnel(), BLOOM_EXPECTED_INSERTIONS, BLOOM_FPR);
+        hashes.forEach((long h) -> clientBloomFilter.put(h));
+        LOGGER.info("Rebuilt bloom filter after eviction: {} entries", hashes.size());
     }
 
     public static boolean isClientEnabled() {
