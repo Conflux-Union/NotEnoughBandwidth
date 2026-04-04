@@ -10,6 +10,7 @@ import net.minecraft.util.math.ChunkPos;
 import org.spongepowered.asm.mixin.*;
 
 import java.util.Comparator;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Mixin(ServerChunkLoadingManager.class)
 public abstract class ChunkMapMixin {
@@ -19,7 +20,7 @@ public abstract class ChunkMapMixin {
     ServerWorld world;
 
     @Unique
-    private static volatile ChunkTicketType<ChunkPos> nebDccTicket;
+    private static final AtomicReference<ChunkTicketType<ChunkPos>> nebDccTicket = new AtomicReference<>();
 
     @Shadow
     int getViewDistance(ServerPlayerEntity player) { throw new AssertionError(); }
@@ -56,10 +57,12 @@ public abstract class ChunkMapMixin {
 
             @Override
             public void putTicket(ChunkPos pos, int ticks) {
-                var ticketType = nebDccTicket;
+                var ticketType = nebDccTicket.get();
                 if (ticketType == null || ticketType.getExpiryTicks() != ticks) {
-                    ticketType = nebDccTicket = ChunkTicketType.create("neb_dcc",
+                    var newType = ChunkTicketType.<ChunkPos>create("neb_dcc",
                             Comparator.comparingLong(ChunkPos::toLong), ticks);
+                    nebDccTicket.compareAndSet(ticketType, newType);
+                    ticketType = nebDccTicket.get();
                 }
                 ticketManager.addTicket(ticketType, pos, 1, pos);
             }

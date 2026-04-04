@@ -42,7 +42,12 @@ public class ChunkCacheDatabase implements AutoCloseable {
         this.db = Iq80DBFactory.factory.open(dir.toFile(), options);
         this.dbDir = dir;
         this.maxSizeBytes = maxSizeBytes;
-        migrateIfNeeded();
+        try {
+            migrateIfNeeded();
+        } catch (Exception e) {
+            try { db.close(); } catch (Exception suppressed) { e.addSuppressed(suppressed); }
+            throw e;
+        }
         LOGGER.info("Opened chunk cache DB at {}", dir);
     }
 

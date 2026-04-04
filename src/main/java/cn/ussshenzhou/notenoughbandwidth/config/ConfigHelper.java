@@ -47,8 +47,12 @@ public class ConfigHelper {
     @SuppressWarnings("unchecked")
     public static <T extends TConfig> void getConfigWrite(Class<T> configClass, Consumer<T> setter) {
         T config = (T) CACHE.get(configClass);
-        setter.accept(config);
-        saveConfig(config);
+        // Synchronize on the config instance so concurrent writes and the GSON
+        // snapshot in saveConfigInternal see a consistent object state.
+        synchronized (config) {
+            setter.accept(config);
+            saveConfig(config);
+        }
     }
 
     public static <T extends TConfig> void saveConfig(T config) {
@@ -71,9 +75,11 @@ public class ConfigHelper {
     }
 
     private static <T extends TConfig> void saveConfigInternal(T config, File configFile) {
+        // Snapshot JSON on the calling thread to avoid racing with concurrent mutations.
+        String json = GSON.toJson(config);
         CompletableFuture.runAsync(() -> {
             try {
-                FileUtils.write(configFile, GSON.toJson(config), StandardCharsets.UTF_8);
+                FileUtils.write(configFile, json, StandardCharsets.UTF_8);
             } catch (IOException ignored) {
                 LOGGER.error("Failed to save config {}. Things may not work well.", config.getClass());
             }

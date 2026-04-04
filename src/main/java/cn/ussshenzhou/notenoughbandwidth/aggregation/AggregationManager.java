@@ -80,10 +80,21 @@ public class AggregationManager {
         TIMER.execute(() -> flushConnectionInternal(connection));
     }
 
+    /**
+     * Synchronously flush buffered packets for this connection on the calling thread.
+     * Used when a skip-type packet must be sent immediately after the buffered batch
+     * to preserve packet ordering.
+     */
+    public static void flushConnectionSync(ClientConnection connection) {
+        flushConnectionInternal(connection);
+    }
+
     public static void discardConnection(ClientConnection connection) {
         var packets = PACKET_BUFFER.remove(connection);
         if (packets != null) {
-            packets.clear();
+            synchronized (packets) {
+                packets.clear();
+            }
         }
         FLUSH_WAIT.remove(connection);
     }
@@ -118,6 +129,7 @@ public class AggregationManager {
                 return;
             }
             var sendPackets = new ArrayList<>(packets);
+            packets.clear();
             var aggregationPayload = new PacketAggregationPacket(
                     sendPackets, encoder.state, connection);
             // encoder.state.side() = outbound direction (CLIENTBOUND on server, SERVERBOUND on client)
@@ -125,7 +137,6 @@ public class AggregationManager {
                     ? new CustomPayloadS2CPacket(aggregationPayload)
                     : new CustomPayloadC2SPacket(aggregationPayload);
             connection.send(wrapper);
-            packets.clear();
             connection.flush();
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to flush packets.", e);

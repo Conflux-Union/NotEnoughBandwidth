@@ -22,10 +22,11 @@ public class TimeCounter {
 
     public synchronized void put(int value) {
         update();
-        container.put(Util.getMeasuringTimeMs(), value);
+        container.addTo(Util.getMeasuringTimeMs(), value);
     }
 
     public synchronized double averageIn1s() {
+        update();
         return container.values().intStream().sum() / (double) windowsSizeMs * 1000;
     }
 }

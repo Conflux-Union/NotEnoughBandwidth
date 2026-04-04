@@ -2,6 +2,7 @@ package cn.ussshenzhou.notenoughbandwidth.mixin;
 
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
+import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
@@ -38,9 +39,11 @@ public abstract class ConnectionMixin {
             at = @At("HEAD"), cancellable = true)
     private void nebPacketAggregate(Packet<?> packet, @Nullable PacketCallbacks callbacks,
                                     boolean flush, CallbackInfo ci) {
+        // Capture volatile field once to avoid TOCTOU null-pointer race.
+        var listener = this.packetListener;
         if (this.getAddress() instanceof LocalAddress
-                || this.packetListener == null
-                || this.packetListener.getPhase() != NetworkPhase.PLAY
+                || listener == null
+                || listener.getPhase() != NetworkPhase.PLAY
                 || !NamespaceIndexManager.ready()) {
             return;
         }
@@ -48,12 +51,23 @@ public abstract class ConnectionMixin {
         if (!NebConnectionRegistry.isEnabled((ClientConnection) (Object) this)) {
             return;
         }
-        if (NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {
-            AggregationManager.flushConnection((ClientConnection) (Object) this);
+        // Never aggregate the aggregation wrapper itself — would cause recursive nesting.
+        if (PacketAggregationPacket.TYPE.id().equals(PacketUtil.getTrueType(packet))) {
+            return;
+        }
+        // Packets with callbacks (disconnect, resource pack ack, etc.) must go through
+        // the vanilla path so callbacks fire correctly. Flush first to preserve ordering.
+        if (callbacks != null || NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {
+            AggregationManager.flushConnectionSync((ClientConnection) (Object) this);
             return;
         }
         if (packet instanceof BundlePacket<?> bundlePacket) {
-            bundlePacket.getPackets().forEach(p -> this.send(p, callbacks, flush));
+            var subPackets = new java.util.ArrayList<Packet<?>>();
+            bundlePacket.getPackets().forEach(subPackets::add);
+            for (int i = 0; i < subPackets.size(); i++) {
+                // Only attach the original callbacks to the last sub-packet so they fire once.
+                this.send(subPackets.get(i), i == subPackets.size() - 1 ? callbacks : null, flush);
+            }
             ci.cancel();
             return;
         }

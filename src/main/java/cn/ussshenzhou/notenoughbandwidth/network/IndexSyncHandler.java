@@ -43,6 +43,12 @@ public class IndexSyncHandler {
         PayloadTypeRegistry.playS2C().register(DictionarySyncPayload.TYPE, DictionarySyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(IndexSyncPayload.TYPE, IndexSyncPayload.CODEC);
 
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            var connection = handler.connection;
+            ChunkCacheManager.removeServerBloomFilter(connection);
+            AggregationManager.discardConnection(connection);
+        });
+
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             // Send dictionary first so the client has it before compression starts.
             byte[] dict = DictionaryManager.getDict();

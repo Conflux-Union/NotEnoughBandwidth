@@ -16,6 +16,9 @@ import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 /**
  * Wraps a single sub-packet extracted from an aggregated blob for decoding.
  * <p>
@@ -29,11 +32,8 @@ public class AggregatedDecodePacket {
 
     private final Identifier type;
     private final ByteBuf data;
-    private static final Object2IntArrayMap<Identifier> VANILLA_TO_ID = new Object2IntArrayMap<>();
-
-    static {
-        VANILLA_TO_ID.defaultReturnValue(-1);
-    }
+    private static volatile Object2IntArrayMap<Identifier> VANILLA_TO_ID;
+    private static final AtomicInteger LAST_KNOWN_SIZE = new AtomicInteger(-1);
 
     public AggregatedDecodePacket(Identifier type, ByteBuf data) {
         this.type = type;
@@ -42,9 +42,9 @@ public class AggregatedDecodePacket {
 
     public Packet<?> decode(NetworkState<?> protocolInfo) {
         PacketCodecDispatcher vanillaCodec = (PacketCodecDispatcher) protocolInfo.codec();
-        updateVanillaIdMap(vanillaCodec);
+        var idMap = getOrUpdateVanillaIdMap(vanillaCodec);
 
-        int id = VANILLA_TO_ID.getInt(type);
+        int id = idMap.getInt(type);
         if (id != -1) {
             return decodeVanilla(vanillaCodec, id);
         }
@@ -86,16 +86,23 @@ public class AggregatedDecodePacket {
         }
     }
 
-    private void updateVanillaIdMap(PacketCodecDispatcher vanillaCodec) {
-        if (vanillaCodec.typeToIndex.size() == VANILLA_TO_ID.size()) {
-            return;
+    private static Object2IntArrayMap<Identifier> getOrUpdateVanillaIdMap(PacketCodecDispatcher vanillaCodec) {
+        int currentSize = vanillaCodec.typeToIndex.size();
+        if (currentSize == LAST_KNOWN_SIZE.get()) {
+            var cached = VANILLA_TO_ID;
+            if (cached != null) return cached;
         }
-        VANILLA_TO_ID.clear();
+        // Build a fresh snapshot — no mutation of shared state.
+        var fresh = new Object2IntArrayMap<Identifier>();
+        fresh.defaultReturnValue(-1);
         vanillaCodec.typeToIndex.forEach((t, i) -> {
             if (t instanceof PacketType<?> pt) {
-                VANILLA_TO_ID.put(pt.id(), (int) i);
+                fresh.put(pt.id(), (int) i);
             }
         });
+        VANILLA_TO_ID = fresh;
+        LAST_KNOWN_SIZE.set(currentSize);
+        return fresh;
     }
 
     public Identifier getType() {

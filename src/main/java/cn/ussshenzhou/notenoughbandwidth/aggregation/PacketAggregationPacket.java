@@ -54,42 +54,51 @@ public class PacketAggregationPacket implements CustomPayload {
 
     public void write(RegistryByteBuf buffer) {
         var rawBuf = new RegistryByteBuf(ByteBufAllocator.DEFAULT.buffer(), buffer.getRegistryManager());
-        packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
+        try {
+            packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
 
-        int rawSize = rawBuf.readableBytes();
-        if (DictionaryManager.isSampling()) {
-            byte[] sample = new byte[rawSize];
-            rawBuf.getBytes(rawBuf.readerIndex(), sample);
-            DictionaryManager.collectSample(sample);
-        }
-        boolean compress = rawSize >= 32;
-        buffer.writeBoolean(compress);
-        if (compress) {
-            buffer.writeVarInt(rawSize);
-            var compressedBuf = new PacketByteBuf(ZstdHelper.compress(connection, rawBuf));
-            if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
-                LOGGER.debug("Aggregated and compressed: {} -> {} bytes ({} %)",
-                        rawSize, compressedBuf.readableBytes(),
-                        String.format("%.2f", 100f * compressedBuf.readableBytes() / rawSize));
+            int rawSize = rawBuf.readableBytes();
+            if (DictionaryManager.isSampling()) {
+                byte[] sample = new byte[rawSize];
+                rawBuf.getBytes(rawBuf.readerIndex(), sample);
+                DictionaryManager.collectSample(sample);
             }
-            buffer.writeBytes(compressedBuf);
-            this.bakedSize = compressedBuf.readableBytes();
-            compressedBuf.release();
-        } else {
-            buffer.writeBytes(rawBuf);
-            this.bakedSize = rawSize;
+            boolean compress = rawSize >= 32;
+            buffer.writeBoolean(compress);
+            if (compress) {
+                buffer.writeVarInt(rawSize);
+                var compressedBuf = new PacketByteBuf(ZstdHelper.compress(connection, rawBuf));
+                try {
+                    if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
+                        LOGGER.debug("Aggregated and compressed: {} -> {} bytes ({} %)",
+                                rawSize, compressedBuf.readableBytes(),
+                                String.format("%.2f", 100f * compressedBuf.readableBytes() / rawSize));
+                    }
+                    buffer.writeBytes(compressedBuf);
+                    this.bakedSize = compressedBuf.readableBytes();
+                } finally {
+                    compressedBuf.release();
+                }
+            } else {
+                buffer.writeBytes(rawBuf);
+                this.bakedSize = rawSize;
+            }
+            SimpleStatManager.outRaw(rawSize);
+        } finally {
+            rawBuf.release();
         }
-        SimpleStatManager.outRaw(rawSize);
-        rawBuf.release();
     }
 
     private void encodeSubPacket(RegistryByteBuf raw, AggregatedEncodePacket packet) {
         CustomPacketPrefixHelper.write(packet.type, raw);
         var d = new RegistryByteBuf(ByteBufAllocator.DEFAULT.buffer(), raw.getRegistryManager());
-        packet.encode(d, protocolInfo, protocolInfo.side());
-        raw.writeVarInt(d.readableBytes());
-        raw.writeBytes(d);
-        d.release();
+        try {
+            packet.encode(d, protocolInfo, protocolInfo.side());
+            raw.writeVarInt(d.readableBytes());
+            raw.writeBytes(d);
+        } finally {
+            d.release();
+        }
     }
 
     // ---- decode side ----
@@ -106,7 +115,6 @@ public class PacketAggregationPacket implements CustomPayload {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public void handle(ClientConnection conn) {
         this.connection = conn;
-        SimpleStatManager.inRaw(bakedSize - data.readableBytes());
 
         boolean compressed = data.readBoolean();
         RegistryByteBuf raw;
@@ -128,28 +136,37 @@ public class PacketAggregationPacket implements CustomPayload {
         }
         var inboundProtocol = decoder.state;
         var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
-        while (raw.readableBytes() > 0) {
-            var type = CustomPacketPrefixHelper.read(raw);
-            var size = raw.readVarInt();
-            var subData = new RegistryByteBuf(raw.readRetainedSlice(size), data.getRegistryManager());
-            packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+        try {
+            while (raw.readableBytes() > 0) {
+                var type = CustomPacketPrefixHelper.read(raw);
+                var size = raw.readVarInt();
+                var subData = new RegistryByteBuf(raw.readRetainedSlice(size), data.getRegistryManager());
+                if (type == null) {
+                    LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
+                    subData.release();
+                    continue;
+                }
+                packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+            }
+        } finally {
+            data.release();
+            raw.release();
         }
-        data.release();
-        raw.release();
 
         for (var sub : packetsToHandle) {
-            Packet<?> decoded = sub.decode(inboundProtocol);
-            if (decoded != null) {
-                try {
+            try {
+                Packet<?> decoded = sub.decode(inboundProtocol);
+                if (decoded != null) {
                     var listener = conn.getPacketListener();
                     if (listener != null) {
                         ((Packet) decoded).apply(listener);
                     }
-                } catch (Exception e) {
-                    LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
                 }
+            } catch (Exception e) {
+                LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
+            } finally {
+                sub.getData().release();
             }
-            sub.getData().release();
         }
     }
 

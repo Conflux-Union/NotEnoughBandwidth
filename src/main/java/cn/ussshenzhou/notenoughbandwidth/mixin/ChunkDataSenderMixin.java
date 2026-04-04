@@ -40,6 +40,9 @@ public class ChunkDataSenderMixin {
         ClientConnection connection = handler.connection;
         if (!NebConnectionRegistry.isEnabled(connection)) return;
 
+        // Build the packet once. On hit we skip the vanilla path entirely;
+        // on miss we send this packet ourselves instead of letting vanilla
+        // construct a second identical one.
         ChunkDataS2CPacket packet = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
         ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(), world.getRegistryManager(),
                 "SERVER", chunk.getPos().x, chunk.getPos().z);
@@ -49,13 +52,11 @@ public class ChunkDataSenderMixin {
                     new ChunkHashPayload(chunk.getPos().x, chunk.getPos().z, result.hash())));
             SimpleStatManager.chunkCacheHits.incrementAndGet();
             SimpleStatManager.chunkCacheSavedBytes.addAndGet(result.dataBytes());
-            // Count the skipped chunk payload in raw stats so Ratio reflects PCC savings.
             SimpleStatManager.outRaw((int) Math.min(result.dataBytes(), Integer.MAX_VALUE));
-            ci.cancel();
         } else {
             SimpleStatManager.chunkCacheMisses.incrementAndGet();
+            handler.sendPacket(packet);
         }
-        // On miss: let vanilla create and send ChunkDataS2CPacket as normal.
-        // ClientChunkCacheMixin will cache the received chunk on the client side.
+        ci.cancel();
     }
 }

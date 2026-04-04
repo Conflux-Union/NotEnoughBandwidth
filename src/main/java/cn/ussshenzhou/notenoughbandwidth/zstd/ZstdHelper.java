@@ -25,14 +25,20 @@ public class ZstdHelper {
     }
 
     public static ByteBuf decompress(ClientConnection connection, ByteBuf compressed, int originalSize) {
-        if (compressed.isDirect()) {
-            return Unpooled.wrappedBuffer(get(connection).decompress(compressed.nioBuffer(), originalSize));
-        } else {
-            var directBuf = Unpooled.directBuffer(compressed.readableBytes());
-            compressed.getBytes(compressed.readerIndex(), directBuf);
-            var decompressed = Unpooled.wrappedBuffer(get(connection).decompress(directBuf.nioBuffer(), originalSize));
-            directBuf.release();
-            return decompressed;
+        try {
+            if (compressed.isDirect()) {
+                return Unpooled.wrappedBuffer(get(connection).decompress(compressed.nioBuffer(), originalSize));
+            } else {
+                var directBuf = Unpooled.directBuffer(compressed.readableBytes());
+                try {
+                    compressed.getBytes(compressed.readerIndex(), directBuf);
+                    return Unpooled.wrappedBuffer(get(connection).decompress(directBuf.nioBuffer(), originalSize));
+                } finally {
+                    directBuf.release();
+                }
+            }
+        } finally {
+            compressed.release();
         }
     }
 
