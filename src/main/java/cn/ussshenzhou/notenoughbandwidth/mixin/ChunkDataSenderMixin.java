@@ -49,6 +49,8 @@ public class ChunkDataSenderMixin {
                     new ChunkHashPayload(chunk.getPos().x, chunk.getPos().z, result.hash())));
             SimpleStatManager.chunkCacheHits.incrementAndGet();
             SimpleStatManager.chunkCacheSavedBytes.addAndGet(result.dataBytes());
+            // Count the skipped chunk payload in raw stats so Ratio reflects PCC savings.
+            SimpleStatManager.outRaw((int) Math.min(result.dataBytes(), Integer.MAX_VALUE));
             ci.cancel();
         } else {
             SimpleStatManager.chunkCacheMisses.incrementAndGet();

@@ -113,6 +113,10 @@ public class ModNetworking {
         // Load from local DB, or fall back to requesting the full packet.
         ClientPlayNetworking.registerGlobalReceiver(ChunkHashPayload.TYPE, (payload, context) -> {
             byte[] cachedBytes = ChunkCacheManager.getClientCachedChunk(payload.contentHash());
+            if (cachedBytes != null) {
+                // Count the skipped chunk payload in raw stats so Ratio reflects PCC savings.
+                SimpleStatManager.inRaw(cachedBytes.length);
+            }
             if (cachedBytes == null) {
                 // Bloom-filter false positive or stale cache — request full data.
                 ClientPlayNetworking.send(new ChunkRequestPayload(payload.chunkX(), payload.chunkZ()));
