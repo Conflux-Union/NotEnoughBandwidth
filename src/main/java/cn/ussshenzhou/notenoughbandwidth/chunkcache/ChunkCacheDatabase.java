@@ -28,7 +28,7 @@ public class ChunkCacheDatabase implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-ChunkCacheDB");
 
     // Bump this when the on-disk format changes to invalidate old caches automatically.
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 3;
     private static final byte[] VERSION_KEY = "NEB_FORMAT_VERSION".getBytes(StandardCharsets.UTF_8);
 
     private final DB db;

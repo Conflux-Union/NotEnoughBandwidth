@@ -33,11 +33,12 @@ public class PacketDecoderMixin {
         if (out.isEmpty()) return;
         var last = out.getLast();
         if (last instanceof Packet<?> packet) {
-            SimpleStatManager.inBaked(neb$capturedSize);
+            int consumed = neb$capturedSize - input.readableBytes();
+            SimpleStatManager.inBaked(consumed);
             if (PacketUtil.getTruePacket(packet) instanceof PacketAggregationPacket aggregationPacket) {
-                aggregationPacket.setBakedSize(neb$capturedSize);
+                aggregationPacket.setBakedSize(consumed);
             } else {
-                SimpleStatManager.inRaw(neb$capturedSize);
+                SimpleStatManager.inRaw(consumed);
             }
         }
     }

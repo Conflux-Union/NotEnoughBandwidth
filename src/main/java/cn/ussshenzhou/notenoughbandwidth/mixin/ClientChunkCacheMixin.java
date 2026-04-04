@@ -47,7 +47,8 @@ public class ClientChunkCacheMixin {
 
         // Serialize on a background thread so DB write doesn't block.
         CACHE_WRITER.execute(() -> {
-            long hash = ChunkHashUtil.compute(chunkData, lightData, registryManager).hash();
+            long hash = ChunkHashUtil.compute(chunkData, registryManager,
+                    "CLIENT", packet.getChunkX(), packet.getChunkZ()).hash();
             // Only write if not already cached (avoid pointless re-writes for re-entered areas).
             if (ChunkCacheManager.getClientCachedChunk(hash) != null) return;
 

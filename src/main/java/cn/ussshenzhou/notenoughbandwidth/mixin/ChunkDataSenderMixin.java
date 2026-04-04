@@ -40,9 +40,9 @@ public class ChunkDataSenderMixin {
         ClientConnection connection = handler.connection;
         if (!NebConnectionRegistry.isEnabled(connection)) return;
 
-        // Build the packet once to get the canonical ChunkData + LightData objects.
         ChunkDataS2CPacket packet = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
-        ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(), packet.getLightData(), world.getRegistryManager());
+        ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(), world.getRegistryManager(),
+                "SERVER", chunk.getPos().x, chunk.getPos().z);
 
         if (ChunkCacheManager.serverMightHaveChunk(connection, result.hash())) {
             handler.sendPacket(new CustomPayloadS2CPacket(
