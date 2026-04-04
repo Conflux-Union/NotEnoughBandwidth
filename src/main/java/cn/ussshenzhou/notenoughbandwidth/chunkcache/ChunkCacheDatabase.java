@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.chunkcache;
 
+import com.github.luben.zstd.Zstd;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import org.iq80.leveldb.DB;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,6 +27,10 @@ import java.util.stream.Stream;
 public class ChunkCacheDatabase implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-ChunkCacheDB");
 
+    // Bump this when the on-disk format changes to invalidate old caches automatically.
+    private static final int FORMAT_VERSION = 1;
+    private static final byte[] VERSION_KEY = "NEB_FORMAT_VERSION".getBytes(StandardCharsets.UTF_8);
+
     private final DB db;
     private final Path dbDir;
     private final long maxSizeBytes;
@@ -36,11 +42,37 @@ public class ChunkCacheDatabase implements AutoCloseable {
         this.db = Iq80DBFactory.factory.open(dir.toFile(), options);
         this.dbDir = dir;
         this.maxSizeBytes = maxSizeBytes;
+        migrateIfNeeded();
         LOGGER.info("Opened chunk cache DB at {}", dir);
     }
 
+    /**
+     * Clears the DB if the stored format version doesn't match FORMAT_VERSION.
+     * Avoids trying to decompress legacy uncompressed entries.
+     */
+    private void migrateIfNeeded() {
+        byte[] stored = db.get(VERSION_KEY);
+        int storedVersion = (stored != null && stored.length == 4)
+                ? ByteBuffer.wrap(stored).getInt() : -1;
+        if (storedVersion == FORMAT_VERSION) return;
+
+        LOGGER.info("Chunk cache format version mismatch (stored={}, current={}), clearing DB",
+                storedVersion, FORMAT_VERSION);
+        try (DBIterator it = db.iterator()) {
+            List<byte[]> keys = new ArrayList<>();
+            for (it.seekToFirst(); it.hasNext(); it.next()) {
+                keys.add(it.peekNext().getKey());
+            }
+            for (byte[] key : keys) db.delete(key);
+        } catch (IOException e) {
+            LOGGER.error("Failed to clear DB during migration", e);
+        }
+        db.put(VERSION_KEY, ByteBuffer.allocate(4).putInt(FORMAT_VERSION).array());
+    }
+
     public void put(long hash, byte[] data) {
-        db.put(longToBytes(hash), data);
+        byte[] compressed = Zstd.compress(data, 6);
+        db.put(longToBytes(hash), compressed);
     }
 
     public void delete(long hash) {
@@ -49,7 +81,16 @@ public class ChunkCacheDatabase implements AutoCloseable {
 
     @Nullable
     public byte[] get(long hash) {
-        return db.get(longToBytes(hash));
+        byte[] compressed = db.get(longToBytes(hash));
+        if (compressed == null) return null;
+        long originalSize = Zstd.decompressedSize(compressed);
+        if (originalSize < 0 || originalSize > 64 * 1024 * 1024) {
+            LOGGER.warn("Invalid decompressed size {} for hash {}, dropping entry", originalSize, hash);
+            db.delete(longToBytes(hash));
+            return null;
+        }
+        if (originalSize == 0) return new byte[0];
+        return Zstd.decompress(compressed, (int) originalSize);
     }
 
     /**
@@ -122,10 +163,12 @@ public class ChunkCacheDatabase implements AutoCloseable {
         long entriesToDelete = avgEntrySize > 0 ? (bytesToFree / avgEntrySize) + 1 : sampledCount;
 
         // Collect keys first — do not delete while iterating.
+        // Skip VERSION_KEY (non-8-byte keys) to avoid wiping the format version marker.
         List<byte[]> keysToDelete = new ArrayList<>((int) entriesToDelete);
         try (DBIterator it = db.iterator()) {
             for (it.seekToFirst(); it.hasNext() && keysToDelete.size() < entriesToDelete; it.next()) {
-                keysToDelete.add(it.peekNext().getKey());
+                byte[] key = it.peekNext().getKey();
+                if (key.length == 8) keysToDelete.add(key);
             }
         } catch (IOException e) {
             LOGGER.error("Failed to collect keys for eviction", e);
