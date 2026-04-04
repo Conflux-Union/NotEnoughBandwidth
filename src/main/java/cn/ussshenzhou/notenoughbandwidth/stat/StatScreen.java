@@ -7,6 +7,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.*;
+import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.chunkCacheSavedBytesServer;
 
 public class StatScreen extends Screen {
     private final String client = "Client";
@@ -22,6 +23,7 @@ public class StatScreen extends Screen {
     private String ratioS = "-";
 
     private String dictStatus = "";
+    private String chunkCacheStatus = "";
 
     private int tick = 0;
 
@@ -95,6 +97,16 @@ public class StatScreen extends Screen {
             } else {
                 dictStatus = "Zstd Dictionary  §7-§r";
             }
+
+            long total = chunkCacheHitsServer + chunkCacheMissesServer;
+            String hitRate = total > 0
+                    ? String.format("%.1f%%", 100.0 * chunkCacheHitsServer / total)
+                    : "N/A";
+            chunkCacheStatus = "Chunk Cache  "
+                    + "§aHits§r " + chunkCacheHitsServer
+                    + "  §cMisses§r " + chunkCacheMissesServer
+                    + "  Hit Rate " + hitRate
+                    + "  Saved " + getReadableSize(chunkCacheSavedBytesServer);
         }
         tick++;
     }
@@ -118,6 +130,7 @@ public class StatScreen extends Screen {
         context.drawText(tr, ratioS, 10, 200, 0xFFFFFF, true);
 
         context.drawText(tr, dictStatus, 10, 230, 0xFFFFFF, true);
+        context.drawText(tr, chunkCacheStatus, 10, 250, 0xFFFFFF, true);
 
         super.render(context, mouseX, mouseY, delta);
     }

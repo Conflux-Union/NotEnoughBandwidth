@@ -25,6 +25,8 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     include implementation("com.github.luben:zstd-jni:1.5.6-9")
+    include implementation("org.iq80.leveldb:leveldb-api:0.12")
+    include implementation("org.iq80.leveldb:leveldb:0.12")
 }
 
 processResources {

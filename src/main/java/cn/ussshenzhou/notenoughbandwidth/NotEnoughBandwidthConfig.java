@@ -3,9 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.config.TConfig;
-import cn.ussshenzhou.notenoughbandwidth.network.DictionarySyncPayload;
-import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncPayload;
-import cn.ussshenzhou.notenoughbandwidth.network.NebAckPayload;
+import cn.ussshenzhou.notenoughbandwidth.network.*;
 import com.google.gson.annotations.Expose;
 import net.minecraft.util.math.MathHelper;
 
@@ -29,6 +27,8 @@ public class NotEnoughBandwidthConfig implements TConfig {
     public int dccSizeLimit = 60;
     public int dccDistance = 5;
     public int dccTimeout = 60;
+    public boolean chunkCacheEnabled = true;
+    public int chunkCacheMaxSizeMB = 2048;
 
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
@@ -37,6 +37,9 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add(DictionarySyncPayload.TYPE.id().toString());
         add(IndexSyncPayload.TYPE.id().toString());
         add(NebAckPayload.TYPE.id().toString());
+        add(ChunkCacheManifestPayload.TYPE.id().toString());
+        add(ChunkHashPayload.TYPE.id().toString());
+        add(ChunkRequestPayload.TYPE.id().toString());
         add("minecraft:login");
     }};
 

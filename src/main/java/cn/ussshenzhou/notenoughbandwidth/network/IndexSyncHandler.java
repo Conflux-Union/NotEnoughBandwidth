@@ -1,6 +1,7 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
+import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -78,6 +79,12 @@ public class IndexSyncHandler {
             NebConnectionRegistry.markEnabled(context.player().networkHandler.connection);
             // Tell the server we have NEB installed so it enables the compression path for us.
             ClientPlayNetworking.send(new NebAckPayload());
+            // Upload our chunk cache bloom filter so the server can skip sending chunks we already have.
+            byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
+            if (bloomBytes != null && bloomBytes.length > 0) {
+                ClientPlayNetworking.send(new ChunkCacheManifestPayload(bloomBytes));
+                LOGGER.info("Sent chunk cache manifest ({} bytes)", bloomBytes.length);
+            }
         });
     }
 

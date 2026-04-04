@@ -9,9 +9,13 @@
     "PacketDecoderMixin",
     "CustomPacketPayloadMixin",
     "ChunkMapMixin",
-    "PlayerListMixin"
+    "PlayerListMixin",
+    "ChunkDataSenderMixin"
   ],
-  "client": [],
+  "client": [
+    "ClientChunkCacheMixin",
+    "ClientPlayNetworkHandlerInvoker"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

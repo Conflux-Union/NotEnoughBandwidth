@@ -1,5 +1,7 @@
 package cn.ussshenzhou.notenoughbandwidth.stat;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 public class SimpleStatManager {
     public static final SimpleStatData LOCAL = new SimpleStatData();
 
@@ -34,4 +36,14 @@ public class SimpleStatManager {
     public static int dictSizeServer;
     public static int dictSampleCountServer;
     public static int dictSampleThresholdServer;
+
+    // Server-side chunk cache counters (written by ChunkDataSenderMixin on the server).
+    public static final AtomicLong chunkCacheHits = new AtomicLong();
+    public static final AtomicLong chunkCacheMisses = new AtomicLong();
+    public static final AtomicLong chunkCacheSavedBytes = new AtomicLong();
+
+    // Client-side display copies received via StatRespondPayload.
+    public static long chunkCacheHitsServer;
+    public static long chunkCacheMissesServer;
+    public static long chunkCacheSavedBytesServer;
 }
