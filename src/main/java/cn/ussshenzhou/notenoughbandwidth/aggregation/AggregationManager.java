@@ -1,10 +1,12 @@
 package cn.ussshenzhou.notenoughbandwidth.aggregation;
 
+import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.ClientConnection;
+import net.minecraft.network.NetworkPhase;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
@@ -68,6 +70,14 @@ public class AggregationManager {
         TIMER.execute(() -> flushConnectionInternal(connection));
     }
 
+    public synchronized static void discardConnection(ClientConnection connection) {
+        var packets = PACKET_BUFFER.remove(connection);
+        if (packets != null) {
+            packets.clear();
+        }
+        FLUSH_WAIT.remove(connection);
+    }
+
     private synchronized static void flushConnectionInternal(ClientConnection connection) {
         PACKET_BUFFER.entrySet().removeIf(e -> !e.getKey().isOpen());
         FLUSH_WAIT.remove(connection);
@@ -77,6 +87,13 @@ public class AggregationManager {
     private synchronized static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
         try {
             if (packets == null || packets.isEmpty()) {
+                return;
+            }
+            var listener = connection.getPacketListener();
+            if (!connection.isOpen() || listener == null
+                    || listener.getPhase() != NetworkPhase.PLAY
+                    || !NebConnectionRegistry.isEnabled(connection)) {
+                packets.clear();
                 return;
             }
             var encoder = DefaultChannelPipelineHelper.getPacketEncoder(

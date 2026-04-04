@@ -65,6 +65,15 @@ public class ChunkCacheManager {
             LOGGER.error("Game dir not set, chunk cache disabled");
             return;
         }
+        // Close any leftover DB from a previous session (e.g. Velocity server switch
+        // where DISCONNECT may not fire before the new INIT).
+        if (clientDb != null) {
+            clientDb.close();
+            clientDb = null;
+        }
+        clientBloomFilter = null;
+        pendingNewChunks = 0;
+
         var cfg = NotEnoughBandwidthConfig.get();
         if (!cfg.chunkCacheEnabled) return;
 

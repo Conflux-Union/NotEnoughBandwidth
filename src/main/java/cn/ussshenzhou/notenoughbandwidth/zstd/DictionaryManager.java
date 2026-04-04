@@ -54,6 +54,8 @@ public class DictionaryManager {
         if (dict != null && dict.length > 0) {
             currentDict = dict;
             LOGGER.info("Dictionary loaded ({} bytes)", dict.length);
+        } else {
+            currentDict = null;
         }
     }
 

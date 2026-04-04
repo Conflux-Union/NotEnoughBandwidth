@@ -8,16 +8,16 @@ import com.google.gson.annotations.Expose;
 import net.minecraft.util.math.MathHelper;
 
 import java.util.HashSet;
+import java.util.UUID;
 
 public class NotEnoughBandwidthConfig implements TConfig {
 
+    public String serverUUID = "";
     public boolean compatibleMode = false;
     public HashSet<String> blackList = new HashSet<>() {{
         add("minecraft:command_suggestion");
         add("minecraft:command_suggestions");
         add("minecraft:commands");
-        add("minecraft:chat_command");
-        add("minecraft:chat_command_signed");
         add("minecraft:player_info_update");
         add("minecraft:player_info_remove");
     }};
@@ -41,6 +41,9 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add(ChunkHashPayload.TYPE.id().toString());
         add(ChunkRequestPayload.TYPE.id().toString());
         add("minecraft:login");
+        add("minecraft:chat_command");
+        add("minecraft:chat_command_signed");
+        add("minecraft:chat");
     }};
 
     public static NotEnoughBandwidthConfig get() {

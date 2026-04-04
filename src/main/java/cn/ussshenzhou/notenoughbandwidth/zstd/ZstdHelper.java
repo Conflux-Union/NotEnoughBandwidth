@@ -44,4 +44,13 @@ public class ZstdHelper {
             throw new RuntimeException(e);
         }
     }
+
+    /**
+     * Evict the cached Zstd context for a connection so the next call recreates
+     * it with the current dictionary. Required on proxy server switches where
+     * the same ClientConnection is reused with a different backend.
+     */
+    public static void evict(ClientConnection connection) {
+        ZSTD_CONTEXT_CACHE.invalidate(connection);
+    }
 }

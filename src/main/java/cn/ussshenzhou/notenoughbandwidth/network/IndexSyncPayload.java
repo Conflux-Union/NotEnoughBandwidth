@@ -13,8 +13,10 @@ import java.util.List;
  * Sent from server to client during PLAY phase initialization.
  * Contains the sorted list of all registered custom payload Identifiers
  * so both sides build the same index table for packet header compression.
+ * Also carries the server's persistent UUID for chunk cache namespacing
+ * (critical behind proxies like Velocity where the client address is always the proxy).
  */
-public record IndexSyncPayload(List<Identifier> types) implements CustomPayload {
+public record IndexSyncPayload(List<Identifier> types, String serverId) implements CustomPayload {
     public static final Id<IndexSyncPayload> TYPE =
             new Id<>(Identifier.of(ModConstants.MOD_ID, "index_sync"));
 
@@ -26,6 +28,7 @@ public record IndexSyncPayload(List<Identifier> types) implements CustomPayload 
         for (Identifier id : types) {
             buf.writeIdentifier(id);
         }
+        buf.writeString(serverId);
     }
 
     private static IndexSyncPayload read(PacketByteBuf buf) {
@@ -34,7 +37,8 @@ public record IndexSyncPayload(List<Identifier> types) implements CustomPayload 
         for (int i = 0; i < size; i++) {
             list.add(buf.readIdentifier());
         }
-        return new IndexSyncPayload(list);
+        String serverId = buf.isReadable() ? buf.readString() : "";
+        return new IndexSyncPayload(list, serverId);
     }
 
     @Override

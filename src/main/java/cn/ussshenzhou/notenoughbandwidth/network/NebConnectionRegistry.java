@@ -22,6 +22,10 @@ public class NebConnectionRegistry {
         ENABLED.add(connection);
     }
 
+    public static void markDisabled(ClientConnection connection) {
+        ENABLED.remove(connection);
+    }
+
     public static boolean isEnabled(ClientConnection connection) {
         return ENABLED.contains(connection);
     }

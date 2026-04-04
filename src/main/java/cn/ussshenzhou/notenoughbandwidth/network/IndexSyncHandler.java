@@ -1,9 +1,11 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
+import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
+import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -54,17 +56,20 @@ public class IndexSyncHandler {
             }
             // Do NOT init AggregationManager or mark connection here.
             // We wait for the client to send NebAckPayload before enabling the compression path.
-            sender.sendPacket(new IndexSyncPayload(types));
-            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types), awaiting NEB ack",
+            String serverId = NotEnoughBandwidthConfig.get().serverUUID;
+            sender.sendPacket(new IndexSyncPayload(types, serverId));
+            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}), awaiting NEB ack",
                     dict != null ? dict.length + " bytes" : "none",
-                    handler.player.getName().getString(), types.size());
+                    handler.player.getName().getString(), types.size(), serverId);
         });
     }
 
     public static void registerClient() {
         ClientPlayNetworking.registerGlobalReceiver(DictionarySyncPayload.TYPE, (payload, context) -> {
+            DictionaryManager.setDict(payload.dictionary());
+            var conn = context.player().networkHandler.connection;
+            ZstdHelper.evict(conn);
             if (payload.dictionary() != null && payload.dictionary().length > 0) {
-                DictionaryManager.setDict(payload.dictionary());
                 LOGGER.info("Received dictionary from server ({} bytes)", payload.dictionary().length);
             } else {
                 LOGGER.info("Server has no trained dictionary yet");
@@ -72,14 +77,21 @@ public class IndexSyncHandler {
         });
 
         ClientPlayNetworking.registerGlobalReceiver(IndexSyncPayload.TYPE, (payload, context) -> {
-            LOGGER.info("Received index sync from server ({} types)", payload.types().size());
+            LOGGER.info("Received index sync from server ({} types, serverId={})",
+                    payload.types().size(), payload.serverId());
             NamespaceIndexManager.init(payload.types());
             AggregationManager.init();
-            // Mark our outbound connection as NEB-capable (server always has NEB if it sent this).
-            NebConnectionRegistry.markEnabled(context.player().networkHandler.connection);
-            // Tell the server we have NEB installed so it enables the compression path for us.
+            var connection = context.player().networkHandler.connection;
+            NebConnectionRegistry.markEnabled(connection);
+
+            // Open chunk cache keyed by server UUID (reliable behind proxies).
+            // Fall back to connection address if the server is an old NEB version without UUID.
+            String cacheKey = payload.serverId().isEmpty()
+                    ? connection.getAddress().toString()
+                    : payload.serverId();
+            ChunkCacheManager.onClientConnect(cacheKey);
+
             ClientPlayNetworking.send(new NebAckPayload());
-            // Upload our chunk cache bloom filter so the server can skip sending chunks we already have.
             byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
             if (bloomBytes != null && bloomBytes.length > 0) {
                 ClientPlayNetworking.send(new ChunkCacheManifestPayload(bloomBytes));
