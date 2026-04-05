@@ -3,7 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth.aggregation;
 import io.netty.buffer.ByteBuf;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.minecraft.network.NetworkSide;
-import net.minecraft.network.NetworkState;
+import net.minecraft.network.state.NetworkState;
 import net.minecraft.network.handler.PacketCodecDispatcher;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.CustomPayload;

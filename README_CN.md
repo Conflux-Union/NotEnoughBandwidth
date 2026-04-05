@@ -1,6 +1,6 @@
 # 网络包优化 | Not Enough Bandwidth (NEB) — Fabric 移植版
 
-**Fabric 模组，适用于 Minecraft 1.21.4** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重大幅削减网络流量。
+**Fabric 模组，适用于 Minecraft 1.21.6** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重大幅削减网络流量。
 
 > **如需适配更多版本或遇到问题**，欢迎提交 [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues)、加入 QQ 群 **362669270**（[邀请链接](https://qm.qq.com/q/Ch5CGWyjjc)），或发送邮件至 [support@rms.net.cn](mailto:support@rms.net.cn)。
 
@@ -122,7 +122,7 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 ## 安装
 
 依赖要求：
-- Minecraft 1.21.4
+- Minecraft 1.21.6
 - Fabric Loader >= 0.18.0
 - Fabric API
 

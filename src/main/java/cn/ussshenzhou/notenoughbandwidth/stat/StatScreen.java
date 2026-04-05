@@ -113,26 +113,25 @@ public class StatScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        super.render(context, mouseX, mouseY, delta);
         context.fill(0, 0, width, height, 0x80000000);
         var tr = this.textRenderer;
-        context.drawText(tr, client, 10, 10, 0xFFFFFF, true);
-        context.drawText(tr, actual, 10, 30, 0xFFFFFF, true);
-        context.drawText(tr, actualC, 10, 40, 0xFFFFFF, true);
-        context.drawText(tr, raw, 10, 60, 0xFFFFFF, true);
-        context.drawText(tr, rawC, 10, 70, 0xFFFFFF, true);
-        context.drawText(tr, ratioC, 10, 90, 0xFFFFFF, true);
+        context.drawText(tr, client, 10, 10, 0xFFFFFFFF, true);
+        context.drawText(tr, actual, 10, 30, 0xFFFFFFFF, true);
+        context.drawText(tr, actualC, 10, 40, 0xFFFFFFFF, true);
+        context.drawText(tr, raw, 10, 60, 0xFFFFFFFF, true);
+        context.drawText(tr, rawC, 10, 70, 0xFFFFFFFF, true);
+        context.drawText(tr, ratioC, 10, 90, 0xFFFFFFFF, true);
 
-        context.drawText(tr, server, 10, 120, 0xFFFFFF, true);
-        context.drawText(tr, actual, 10, 140, 0xFFFFFF, true);
-        context.drawText(tr, actualS, 10, 150, 0xFFFFFF, true);
-        context.drawText(tr, raw, 10, 170, 0xFFFFFF, true);
-        context.drawText(tr, rawS, 10, 180, 0xFFFFFF, true);
-        context.drawText(tr, ratioS, 10, 200, 0xFFFFFF, true);
+        context.drawText(tr, server, 10, 120, 0xFFFFFFFF, true);
+        context.drawText(tr, actual, 10, 140, 0xFFFFFFFF, true);
+        context.drawText(tr, actualS, 10, 150, 0xFFFFFFFF, true);
+        context.drawText(tr, raw, 10, 170, 0xFFFFFFFF, true);
+        context.drawText(tr, rawS, 10, 180, 0xFFFFFFFF, true);
+        context.drawText(tr, ratioS, 10, 200, 0xFFFFFFFF, true);
 
-        context.drawText(tr, dictStatus, 10, 230, 0xFFFFFF, true);
-        context.drawText(tr, chunkCacheStatus, 10, 250, 0xFFFFFF, true);
-
-        super.render(context, mouseX, mouseY, delta);
+        context.drawText(tr, dictStatus, 10, 230, 0xFFFFFFFF, true);
+        context.drawText(tr, chunkCacheStatus, 10, 250, 0xFFFFFFFF, true);
     }
 
     private String getReadableSpeed(int bytes) {

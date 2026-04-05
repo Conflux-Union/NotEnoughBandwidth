@@ -6,10 +6,10 @@ import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.local.LocalAddress;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkPhase;
-import net.minecraft.network.PacketCallbacks;
 import net.minecraft.network.listener.PacketListener;
 import net.minecraft.network.packet.BundlePacket;
 import net.minecraft.network.packet.Packet;
@@ -30,14 +30,14 @@ public abstract class ConnectionMixin {
     private volatile PacketListener packetListener;
 
     @Shadow
-    public abstract void send(Packet<?> packet, @Nullable PacketCallbacks callbacks, boolean flush);
+    public abstract void send(Packet<?> packet, @Nullable ChannelFutureListener callbacks, boolean flush);
 
     @Shadow
     public abstract SocketAddress getAddress();
 
-    @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/PacketCallbacks;Z)V",
+    @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lio/netty/channel/ChannelFutureListener;Z)V",
             at = @At("HEAD"), cancellable = true)
-    private void nebPacketAggregate(Packet<?> packet, @Nullable PacketCallbacks callbacks,
+    private void nebPacketAggregate(Packet<?> packet, @Nullable ChannelFutureListener callbacks,
                                     boolean flush, CallbackInfo ci) {
         // Capture volatile field once to avoid TOCTOU null-pointer race.
         var listener = this.packetListener;

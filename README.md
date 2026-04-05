@@ -1,6 +1,6 @@
 # Not Enough Bandwidth (NEB) — Fabric Port
 
-**Fabric mod for Minecraft 1.21.4** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, and persistent client-side chunk deduplication.
+**Fabric mod for Minecraft 1.21.6** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, and persistent client-side chunk deduplication.
 
 > **Need support or a port for another version?**
 > Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
@@ -123,7 +123,7 @@ Maximum size of the local chunk cache database in megabytes. Default is `2048` (
 ## Installation
 
 Requires:
-- Minecraft 1.21.4
+- Minecraft 1.21.6
 - Fabric Loader >= 0.18.0
 - Fabric API
 

@@ -54,8 +54,17 @@ public final class ChunkHashUtil {
         sBuf.release();
         hasher.putBytes(sections);
 
-        // 2. Heightmap — NbtCompound with HashMap. Sort keys to be deterministic.
-        hashNbtElement(hasher, chunkData.getHeightmap());
+        // 2. Heightmap — now a Map<Heightmap.Type, long[]>. Sort by type name for determinism.
+        var heightmap = chunkData.getHeightmap();
+        var sortedTypes = new ArrayList<>(heightmap.keySet());
+        sortedTypes.sort(Comparator.comparing(Enum::name));
+        hasher.putInt(sortedTypes.size());
+        for (var type : sortedTypes) {
+            hasher.putString(type.name(), StandardCharsets.UTF_8);
+            long[] data = heightmap.get(type);
+            hasher.putInt(data.length);
+            for (long l : data) hasher.putLong(l);
+        }
 
         // 3. Block entities — collected via visitor, sorted by position.
         record BE(BlockPos pos, BlockEntityType<?> type, NbtCompound nbt) {}
@@ -124,8 +133,9 @@ public final class ChunkHashUtil {
             case NbtFloat f -> hasher.putFloat(f.floatValue());
             case NbtDouble d -> hasher.putDouble(d.doubleValue());
             case NbtString s -> {
-                hasher.putInt(s.asString().length());
-                hasher.putString(s.asString(), StandardCharsets.UTF_8);
+                String val = s.value();
+                hasher.putInt(val.length());
+                hasher.putString(val, StandardCharsets.UTF_8);
             }
             case NbtByteArray a -> {
                 hasher.putInt(a.size());

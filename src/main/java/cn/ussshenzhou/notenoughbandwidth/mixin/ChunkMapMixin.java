@@ -3,13 +3,13 @@ package cn.ussshenzhou.notenoughbandwidth.mixin;
 import cn.ussshenzhou.notenoughbandwidth.chunk.CachedChunkTrackingView;
 import net.minecraft.server.network.ChunkFilter;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ChunkTicketManager;
 import net.minecraft.server.world.ChunkTicketType;
 import net.minecraft.server.world.ServerChunkLoadingManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.ChunkPos;
 import org.spongepowered.asm.mixin.*;
 
-import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Mixin(ServerChunkLoadingManager.class)
@@ -20,7 +20,7 @@ public abstract class ChunkMapMixin {
     ServerWorld world;
 
     @Unique
-    private static final AtomicReference<ChunkTicketType<ChunkPos>> nebDccTicket = new AtomicReference<>();
+    private static final AtomicReference<ChunkTicketType> nebDccTicket = new AtomicReference<>();
 
     @Shadow
     int getViewDistance(ServerPlayerEntity player) { throw new AssertionError(); }
@@ -32,7 +32,8 @@ public abstract class ChunkMapMixin {
     private static void untrack(ServerPlayerEntity player, ChunkPos pos) {}
 
     @Shadow
-    public abstract net.minecraft.server.world.ChunkTicketManager getTicketManager();
+    @Final
+    private ChunkTicketManager ticketManager;
 
     /**
      * @author NEB
@@ -43,7 +44,6 @@ public abstract class ChunkMapMixin {
         if (player.getWorld() != this.world) {
             return;
         }
-        var ticketManager = getTicketManager();
         CachedChunkTrackingView.onUpdateChunkTracking(player, getViewDistance(player), new CachedChunkTrackingView.Context() {
             @Override
             public void startChunkTracking(ChunkPos pos) {
@@ -58,13 +58,12 @@ public abstract class ChunkMapMixin {
             @Override
             public void putTicket(ChunkPos pos, int ticks) {
                 var ticketType = nebDccTicket.get();
-                if (ticketType == null || ticketType.getExpiryTicks() != ticks) {
-                    var newType = ChunkTicketType.<ChunkPos>create("neb_dcc",
-                            Comparator.comparingLong(ChunkPos::toLong), ticks);
+                if (ticketType == null || ticketType.expiryTicks() != ticks) {
+                    var newType = new ChunkTicketType(ticks, false, ChunkTicketType.Use.LOADING);
                     nebDccTicket.compareAndSet(ticketType, newType);
                     ticketType = nebDccTicket.get();
                 }
-                ticketManager.addTicket(ticketType, pos, 1, pos);
+                ticketManager.addTicket(ticketType, pos, 1);
             }
         });
     }

@@ -7,8 +7,9 @@ accessible field net/minecraft/network/handler/PacketCodecDispatcher packetTypes
 accessible field net/minecraft/network/handler/PacketCodecDispatcher packetIdGetter Ljava/util/function/Function;
 
 # EncoderHandler / DecoderHandler state for getting protocol info
-accessible field net/minecraft/network/handler/EncoderHandler state Lnet/minecraft/network/NetworkState;
-accessible field net/minecraft/network/handler/DecoderHandler state Lnet/minecraft/network/NetworkState;
+# NetworkState moved from net.minecraft.network to net.minecraft.network.state in 1.21.6
+accessible field net/minecraft/network/handler/EncoderHandler state Lnet/minecraft/network/state/NetworkState;
+accessible field net/minecraft/network/handler/DecoderHandler state Lnet/minecraft/network/state/NetworkState;
 
 # ClientConnection channel field
 accessible field net/minecraft/network/ClientConnection channel Lio/netty/channel/Channel;

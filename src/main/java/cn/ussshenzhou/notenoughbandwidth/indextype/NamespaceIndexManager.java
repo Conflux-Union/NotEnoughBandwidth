@@ -35,6 +35,7 @@ public class NamespaceIndexManager {
      * Must match the PacketType IDs registered in GamePacketTypes.
      */
     private static final List<String> VANILLA_PATHS = List.of(
+            // S2C packets
             "bundle", "bundle_delimiter",
             "add_entity", "animate", "award_stats",
             "block_changed_ack", "block_destruction", "block_entity_data", "block_event", "block_update",
@@ -46,15 +47,17 @@ public class NamespaceIndexManager {
             "damage_event", "debug_sample", "delete_chat", "disguised_chat",
             "entity_event", "entity_position_sync", "explode",
             "forget_level_chunk", "game_event",
-            "hurt_animation", "initialize_border",
+            "horse_screen_open", "hurt_animation", "initialize_border",
             "level_chunk_with_light", "level_event", "level_particles", "light_update",
             "login", "map_item_data", "merchant_offers",
-            "move_entity_pos", "move_entity_pos_rot", "move_entity_rot", "move_vehicle",
+            "move_entity_pos", "move_entity_pos_rot", "move_minecart_along_track",
+            "move_entity_rot", "move_vehicle",
             "open_book", "open_screen", "open_sign_editor",
             "place_ghost_recipe", "player_abilities", "player_chat",
             "player_combat_end", "player_combat_enter", "player_combat_kill",
             "player_info_remove", "player_info_update", "player_look_at",
             "player_position", "player_rotation",
+            "projectile_power",
             "recipe_book_add", "recipe_book_remove", "recipe_book_settings",
             "remove_entities", "remove_mob_effect", "respawn", "rotate_head",
             "section_blocks_update", "select_advancements_tab", "server_data",
@@ -69,14 +72,19 @@ public class NamespaceIndexManager {
             "set_title_text", "set_titles_animation",
             "sound_entity", "sound", "start_configuration", "stop_sound",
             "system_chat", "tab_list", "tag_query", "take_item_entity", "teleport_entity",
+            "test_instance_block_status",
             "update_advancements", "update_attributes", "update_mob_effect", "update_recipes",
-            "projectile_power",
+            "waypoint",
+            "reset_score", "ticking_state", "ticking_step",
+            "set_cursor_item", "set_player_inventory",
+            // C2S packets
             "accept_teleportation", "block_entity_tag_query",
             "bundle_item_selected", "change_game_mode",
             "chat_ack", "chat_command", "chat_command_signed", "chat", "chat_session_update",
             "chunk_batch_received", "client_command", "client_tick_end",
             "command_suggestion", "configuration_acknowledged",
             "container_button_click", "container_click", "container_slot_state_changed",
+            "debug_sample_subscription",
             "edit_book", "entity_tag_query", "interact", "jigsaw_generate",
             "lock_difficulty",
             "move_player_pos", "move_player_pos_rot", "move_player_rot", "move_player_status_only",
@@ -86,10 +94,9 @@ public class NamespaceIndexManager {
             "rename_item", "seen_advancements", "select_trade",
             "set_beacon", "set_carried_item", "set_command_block", "set_command_minecart",
             "set_creative_mode_slot", "set_jigsaw_block", "set_structure_block",
-            "sign_update", "swing", "teleport_to_entity",
-            "use_item_on", "use_item",
-            "reset_score", "ticking_state", "ticking_step",
-            "set_cursor_item", "set_player_inventory"
+            "set_test_block", "sign_update", "swing", "teleport_to_entity",
+            "test_instance_block_action",
+            "use_item_on", "use_item"
     );
 
     public synchronized static void init(List<Identifier> types) {
