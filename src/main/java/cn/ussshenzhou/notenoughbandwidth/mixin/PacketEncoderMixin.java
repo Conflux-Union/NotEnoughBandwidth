@@ -7,6 +7,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.PacketEncoder;
 import net.minecraft.network.packet.Packet;
+import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -20,8 +21,14 @@ public class PacketEncoderMixin {
     private void nebRecordOut(ChannelHandlerContext ctx, Packet<?> packet, ByteBuf output, CallbackInfo ci) {
         int size = output.readableBytes();
         SimpleStatManager.outBaked(size);
-        if (PacketUtil.getTruePacket(packet) instanceof PacketAggregationPacket aggregationPacket) {
-            SimpleStatManager.outRaw(size - aggregationPacket.getBakedSize());
+        Identifier channel = PacketUtil.getTrueType(packet);
+        if (PacketAggregationPacket.CHANNEL.equals(channel)) {
+            int bakedSize = PacketAggregationPacket.LAST_BAKED_SIZE.get();
+            PacketAggregationPacket.LAST_BAKED_SIZE.set(-1);
+            if (bakedSize >= 0) {
+                SimpleStatManager.outRaw(size - bakedSize);
+            }
+            // outRaw for the raw sub-packets is already recorded inside write()
         } else {
             SimpleStatManager.outRaw(size);
         }

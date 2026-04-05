@@ -7,6 +7,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.DecoderHandler;
 import net.minecraft.network.packet.Packet;
+import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -35,8 +36,11 @@ public class PacketDecoderMixin {
         if (last instanceof Packet<?> packet) {
             int consumed = neb$capturedSize - input.readableBytes();
             SimpleStatManager.inBaked(consumed);
-            if (PacketUtil.getTruePacket(packet) instanceof PacketAggregationPacket aggregationPacket) {
-                aggregationPacket.setBakedSize(consumed);
+            Identifier channel = PacketUtil.getTrueType(packet);
+            if (PacketAggregationPacket.CHANNEL.equals(channel)) {
+                // Store baked size so handle() can compute inRaw for sub-packets
+                PacketAggregationPacket.LAST_BAKED_SIZE.set(consumed);
+                // inRaw is recorded inside handle() after decompression
             } else {
                 SimpleStatManager.inRaw(consumed);
             }

@@ -1,26 +1,32 @@
 package cn.ussshenzhou.notenoughbandwidth.mixin;
 
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
+import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import net.minecraft.server.PlayerManager;
-import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
+/**
+ * Extends the server-side chunk watch distance by dccDistance so that
+ * vanilla's updatePosition/sendWatchPackets covers the DCC range.
+ * Only affects applyViewDistance — the client-facing view distance is unchanged.
+ */
 @Mixin(PlayerManager.class)
 public class PlayerListMixin {
 
-    @ModifyVariable(method = "setViewDistance", at = @At(
-            value = "FIELD",
-            target = "Lnet/minecraft/server/PlayerManager;viewDistance:I",
-            opcode = Opcodes.PUTFIELD,
-            shift = At.Shift.AFTER
-    ), argsOnly = true)
-    private int nebModifyViewDistance(int viewDistance) {
+    @Redirect(
+            method = "setViewDistance",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/server/world/ServerChunkManager;applyViewDistance(I)V")
+    )
+    private void nebExtendViewDistance(net.minecraft.server.world.ServerChunkManager chunkManager, int viewDistance) {
+        int extra;
         try {
-            return viewDistance + NotEnoughBandwidthConfig.get().dccDistance;
+            extra = ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).dccDistance;
         } catch (IllegalStateException ignored) {
-            return viewDistance;
+            extra = 0;
         }
+        chunkManager.applyViewDistance(viewDistance + extra);
     }
 }

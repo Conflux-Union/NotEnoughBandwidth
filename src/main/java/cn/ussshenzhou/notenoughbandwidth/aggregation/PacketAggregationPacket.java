@@ -30,6 +30,12 @@ public class PacketAggregationPacket {
 
     public static final Identifier CHANNEL = new Identifier(ModConstants.MOD_ID, "packet_aggregation_packet");
 
+    /**
+     * Passes baked size from write() to the encoder mixin on the same Netty I/O thread.
+     * The encoder reads and resets this after encoding the wrapping CustomPayloadS2C/C2SPacket.
+     */
+    public static final ThreadLocal<Integer> LAST_BAKED_SIZE = ThreadLocal.withInitial(() -> -1);
+
     private int bakedSize;
 
     // ---- encode side ----
@@ -76,6 +82,7 @@ public class PacketAggregationPacket {
                 buffer.writeBytes(rawBuf);
                 this.bakedSize = rawSize;
             }
+            LAST_BAKED_SIZE.set(this.bakedSize);
             SimpleStatManager.outRaw(rawSize);
         } finally {
             rawBuf.release();
@@ -100,8 +107,9 @@ public class PacketAggregationPacket {
     private PacketAggregationPacket(PacketByteBuf buffer) {
         this.side = null;
         this.packetsToEncode = null;
-        this.data = new PacketByteBuf(buffer.retainedDuplicate());
-        buffer.readerIndex(buffer.writerIndex());
+        // Take direct ownership of the buffer — caller is responsible for
+        // passing us a buf we can own (e.g. buf.copy()).
+        this.data = buffer;
     }
 
     public static PacketAggregationPacket read(PacketByteBuf buffer) {

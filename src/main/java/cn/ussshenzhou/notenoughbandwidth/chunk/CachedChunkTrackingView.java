@@ -9,7 +9,6 @@ import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
-import org.intellij.lang.annotations.MagicConstant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,8 +17,13 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * DCC (Delayed Chunk Cache) tracking for 1.20.1.
- * Since ChunkFilter does not exist in 1.20.1, this uses an external
- * per-player cache of recently-left chunks with ticket-based retention.
+ * <p>
+ * Keeps recently-left chunks loaded via chunk tickets so that if the player
+ * reverses direction, vanilla's sendWatchPackets finds the chunk already loaded
+ * and resends it immediately — no regeneration or disk I/O needed.
+ * <p>
+ * No ChunkFilter/ChunkTrackingView exists in 1.20.1, so we track
+ * per-player old/new chunk positions externally and compute the diff ourselves.
  */
 public class CachedChunkTrackingView {
     private static final long NO_CACHE = -1;
@@ -27,7 +31,7 @@ public class CachedChunkTrackingView {
 
     private static final ConcurrentHashMap<ServerPlayerEntity, CachedChunkTrackingView> PLAYER_VIEWS = new ConcurrentHashMap<>();
 
-    private ChunkSectionPos lastSection;
+    private ChunkPos lastCenter;
     private int lastViewDistance;
     private final Long2LongLinkedOpenHashMap cache = new Long2LongLinkedOpenHashMap();
 
@@ -35,72 +39,73 @@ public class CachedChunkTrackingView {
         cache.defaultReturnValue(NO_CACHE);
     }
 
-    public interface Context {
-        void startChunkTracking(ChunkPos pos);
-        void stopChunkTracking(ChunkPos pos);
+    @FunctionalInterface
+    public interface TicketPlacer {
         void putTicket(ChunkPos pos, int ticks);
     }
 
-    public static void onUpdateChunkTracking(ServerPlayerEntity player, int viewDistance, Context context) {
+    public static void onUpdateChunkTracking(ServerPlayerEntity player, int viewDistance, TicketPlacer ticketPlacer) {
         ChunkSectionPos currentSection = player.getWatchedSection();
         ChunkPos playerChunkPos = currentSection.toChunkPos();
 
-        var view = PLAYER_VIEWS.computeIfAbsent(player, k -> new CachedChunkTrackingView());
-        view.tick(player, playerChunkPos, viewDistance, context);
+        CachedChunkTrackingView view = PLAYER_VIEWS.computeIfAbsent(player, k -> new CachedChunkTrackingView());
+        view.tick(player, playerChunkPos, viewDistance, ticketPlacer);
     }
 
     public static void removePlayer(ServerPlayerEntity player) {
         PLAYER_VIEWS.remove(player);
     }
 
-    private void tick(ServerPlayerEntity player, ChunkPos playerChunkPos, int viewDistance, Context context) {
+    private void tick(ServerPlayerEntity player, ChunkPos center, int viewDistance, TicketPlacer ticketPlacer) {
         long now = System.currentTimeMillis();
-        var cfg = ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class);
-        int chunkCacheBufferSize = cfg.dccSizeLimit;
-        int chunkCacheDistance = cfg.dccDistance;
-        int chunkCacheTimeout = cfg.dccTimeout;
-        long chunkCacheTimeoutMilli = TimeUnit.SECONDS.toMillis(chunkCacheTimeout);
+        NotEnoughBandwidthConfig cfg = ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class);
+        int sizeLimit = cfg.dccSizeLimit;
+        int dccDistance = cfg.dccDistance;
+        int dccTimeoutTicks = cfg.dccTimeout * 20;
+        long timeoutMillis = TimeUnit.SECONDS.toMillis(cfg.dccTimeout);
 
-        boolean moved = lastSection == null
-                || !lastSection.toChunkPos().equals(playerChunkPos)
+        boolean moved = lastCenter == null
+                || !lastCenter.equals(center)
                 || lastViewDistance != viewDistance;
 
-        if (moved && lastSection != null) {
-            ChunkPos oldCenter = lastSection.toChunkPos();
-            // Chunks that were in old range but not in new range: add to DCC cache
-            for (int x = oldCenter.x - lastViewDistance; x <= oldCenter.x + lastViewDistance; x++) {
-                for (int z = oldCenter.z - lastViewDistance; z <= oldCenter.z + lastViewDistance; z++) {
-                    if (!isInRange(x, z, playerChunkPos, viewDistance)) {
-                        ChunkPos pos = new ChunkPos(x, z);
-                        if (playerChunkPos.getChebyshevDistance(pos) <= chunkCacheDistance + viewDistance) {
-                            context.putTicket(pos, chunkCacheTimeout * 20);
-                            cache.put(pos.toLong(), now);
-                        }
+        if (moved && lastCenter != null) {
+            // Identify chunks that left the view range and add DCC tickets.
+            int oldMinX = lastCenter.x - lastViewDistance;
+            int oldMaxX = lastCenter.x + lastViewDistance;
+            int oldMinZ = lastCenter.z - lastViewDistance;
+            int oldMaxZ = lastCenter.z + lastViewDistance;
+
+            for (int x = oldMinX; x <= oldMaxX; x++) {
+                for (int z = oldMinZ; z <= oldMaxZ; z++) {
+                    if (isInRange(x, z, center, viewDistance)) {
+                        continue;
+                    }
+                    // This chunk left the player's view. Keep it loaded if close enough.
+                    ChunkPos pos = new ChunkPos(x, z);
+                    if (center.getChebyshevDistance(pos) <= viewDistance + dccDistance) {
+                        ticketPlacer.putTicket(pos, dccTimeoutTicks);
+                        cache.put(pos.toLong(), now);
                     }
                 }
             }
-            // Chunks re-entering range: remove from cache
-            for (int x = playerChunkPos.x - viewDistance; x <= playerChunkPos.x + viewDistance; x++) {
-                for (int z = playerChunkPos.z - viewDistance; z <= playerChunkPos.z + viewDistance; z++) {
+
+            // Chunks that re-entered the view range: remove from DCC cache.
+            int newMinX = center.x - viewDistance;
+            int newMaxX = center.x + viewDistance;
+            int newMinZ = center.z - viewDistance;
+            int newMaxZ = center.z + viewDistance;
+
+            for (int x = newMinX; x <= newMaxX; x++) {
+                for (int z = newMinZ; z <= newMaxZ; z++) {
                     cache.remove(ChunkPos.toLong(x, z));
                 }
             }
         }
 
-        // Evict expired or overflow entries
-        enumerate((pos, time) -> {
-            boolean legacy = time <= now - chunkCacheTimeoutMilli;
-            if (legacy || cache.size() >= chunkCacheBufferSize) {
-                LOGGER.trace("Evict {} from {}'s DCC cache: {}",
-                        new ChunkPos(pos), player.getName().getString(),
-                        legacy ? "timeout" : "buffer full");
-                return CacheConsumer.REMOVE;
-            } else {
-                return CacheConsumer.STOP;
-            }
-        });
+        // Evict expired or overflow entries (oldest first, thanks to insertion order).
+        evict(now, timeoutMillis, sizeLimit);
 
-        lastSection = player.getWatchedSection();
+        lastCenter = center;
         lastViewDistance = viewDistance;
     }
 
@@ -108,21 +113,17 @@ public class CachedChunkTrackingView {
         return Math.abs(x - center.x) <= viewDistance && Math.abs(z - center.z) <= viewDistance;
     }
 
-    @FunctionalInterface
-    private interface CacheConsumer {
-        byte CONTINUE = 0, REMOVE = 1, STOP = 2;
-
-        @MagicConstant(flags = {CONTINUE, REMOVE, STOP})
-        byte accept(long pos, long time);
-    }
-
-    private void enumerate(CacheConsumer consumer) {
-        ObjectIterator<Long2LongMap.Entry> iterator = Long2LongMaps.fastIterator(cache);
-        while (iterator.hasNext()) {
-            Long2LongMap.Entry entry = iterator.next();
-            byte v = consumer.accept(entry.getLongKey(), entry.getLongValue());
-            if ((v & CacheConsumer.REMOVE) != 0) iterator.remove();
-            if ((v & CacheConsumer.STOP) != 0) return;
+    private void evict(long now, long timeoutMillis, int sizeLimit) {
+        ObjectIterator<Long2LongMap.Entry> it = Long2LongMaps.fastIterator(cache);
+        while (it.hasNext()) {
+            Long2LongMap.Entry entry = it.next();
+            boolean expired = entry.getLongValue() <= now - timeoutMillis;
+            if (expired || cache.size() > sizeLimit) {
+                it.remove();
+            } else {
+                // Oldest entries are first; if this one isn't expired, none after it are.
+                break;
+            }
         }
     }
 }
