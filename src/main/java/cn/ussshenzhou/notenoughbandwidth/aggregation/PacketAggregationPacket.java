@@ -9,6 +9,7 @@ import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.util.AttributeKey;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.network.OffThreadException;
@@ -31,10 +32,11 @@ public class PacketAggregationPacket {
     public static final Identifier CHANNEL = new Identifier(ModConstants.MOD_ID, "packet_aggregation_packet");
 
     /**
-     * Passes baked size from write() to the encoder mixin on the same Netty I/O thread.
-     * The encoder reads and resets this after encoding the wrapping CustomPayloadS2C/C2SPacket.
+     * Passes baked (compressed) size from write() to the encoder mixin via the
+     * Netty channel attribute — safe across threads (flush thread vs event loop).
      */
-    public static final ThreadLocal<Integer> LAST_BAKED_SIZE = ThreadLocal.withInitial(() -> -1);
+    public static final AttributeKey<Integer> BAKED_SIZE_KEY =
+            AttributeKey.valueOf("neb_last_baked_size");
 
     private int bakedSize;
 
@@ -68,13 +70,13 @@ public class PacketAggregationPacket {
                 buffer.writeVarInt(rawSize);
                 var compressedBuf = new PacketByteBuf(ZstdHelper.compress(connection, rawBuf));
                 try {
+                    this.bakedSize = compressedBuf.readableBytes();
                     if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
                         LOGGER.debug("Aggregated and compressed: {} -> {} bytes ({} %)",
-                                rawSize, compressedBuf.readableBytes(),
-                                String.format("%.2f", 100f * compressedBuf.readableBytes() / rawSize));
+                                rawSize, this.bakedSize,
+                                String.format("%.2f", 100f * this.bakedSize / rawSize));
                     }
                     buffer.writeBytes(compressedBuf);
-                    this.bakedSize = compressedBuf.readableBytes();
                 } finally {
                     compressedBuf.release();
                 }
@@ -82,7 +84,7 @@ public class PacketAggregationPacket {
                 buffer.writeBytes(rawBuf);
                 this.bakedSize = rawSize;
             }
-            LAST_BAKED_SIZE.set(this.bakedSize);
+            connection.channel.attr(BAKED_SIZE_KEY).set(this.bakedSize);
             SimpleStatManager.outRaw(rawSize);
         } finally {
             rawBuf.release();

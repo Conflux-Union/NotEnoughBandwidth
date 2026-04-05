@@ -58,7 +58,7 @@ public abstract class ConnectionMixin {
                 || !NamespaceIndexManager.ready()) {
             return;
         }
-        if (!NebConnectionRegistry.isEnabled((ClientConnection) (Object) this)) {
+        if (!NebConnectionRegistry.isActive((ClientConnection) (Object) this)) {
             return;
         }
         var trueType = PacketUtil.getTrueType(packet);

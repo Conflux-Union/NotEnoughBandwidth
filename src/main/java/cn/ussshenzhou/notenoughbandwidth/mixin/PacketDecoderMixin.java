@@ -37,11 +37,9 @@ public class PacketDecoderMixin {
             int consumed = neb$capturedSize - input.readableBytes();
             SimpleStatManager.inBaked(consumed);
             Identifier channel = PacketUtil.getTrueType(packet);
-            if (PacketAggregationPacket.CHANNEL.equals(channel)) {
-                // Store baked size so handle() can compute inRaw for sub-packets
-                PacketAggregationPacket.LAST_BAKED_SIZE.set(consumed);
-                // inRaw is recorded inside handle() after decompression
-            } else {
+            if (!PacketAggregationPacket.CHANNEL.equals(channel)) {
+                // inRaw for aggregation packets is recorded inside handle()
+                // after decompression; for everything else, raw == baked.
                 SimpleStatManager.inRaw(consumed);
             }
         }

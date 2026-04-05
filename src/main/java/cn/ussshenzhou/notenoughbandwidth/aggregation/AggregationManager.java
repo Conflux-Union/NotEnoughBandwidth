@@ -126,8 +126,15 @@ public class AggregationManager {
             if (packets == null || packets.isEmpty()) {
                 return;
             }
-            if (!connection.isOpen() || !isPlayPhase(connection)
-                    || !NebConnectionRegistry.isEnabled(connection)) {
+            if (!connection.isOpen() || !isPlayPhase(connection)) {
+                packets.clear();
+                return;
+            }
+            if (NebConnectionRegistry.isPending(connection)) {
+                // Handshake in progress — keep packets buffered until NebAck arrives.
+                return;
+            }
+            if (!NebConnectionRegistry.isEnabled(connection)) {
                 packets.clear();
                 return;
             }

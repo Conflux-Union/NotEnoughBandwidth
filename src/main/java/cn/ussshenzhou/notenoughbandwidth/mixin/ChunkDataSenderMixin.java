@@ -16,7 +16,9 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.server.world.ThreadedAnvilChunkStorage;
 import net.minecraft.world.chunk.WorldChunk;
 import org.apache.commons.lang3.mutable.MutableObject;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -27,6 +29,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(ThreadedAnvilChunkStorage.class)
 public class ChunkDataSenderMixin {
+
+    @Shadow @Final private ServerWorld world;
 
     @Inject(method = "sendChunkDataPackets",
             at = @At("HEAD"),
@@ -39,12 +43,14 @@ public class ChunkDataSenderMixin {
         if (!cfg.chunkCacheEnabled) return;
 
         ClientConnection connection = player.networkHandler.connection;
-        if (!NebConnectionRegistry.isEnabled(connection)) return;
+        if (!NebConnectionRegistry.isActive(connection)) return;
 
         ChunkDataS2CPacket packet = cachedDataPacket.getValue();
         if (packet == null) {
-            // Let vanilla create and cache the packet first
-            return;
+            // Vanilla hasn't created the packet yet — create and cache it so
+            // we can compute its content hash for the bloom filter check.
+            packet = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
+            cachedDataPacket.setValue(packet);
         }
 
         ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(),

@@ -23,9 +23,9 @@ public class PacketEncoderMixin {
         SimpleStatManager.outBaked(size);
         Identifier channel = PacketUtil.getTrueType(packet);
         if (PacketAggregationPacket.CHANNEL.equals(channel)) {
-            int bakedSize = PacketAggregationPacket.LAST_BAKED_SIZE.get();
-            PacketAggregationPacket.LAST_BAKED_SIZE.set(-1);
-            if (bakedSize >= 0) {
+            // Read baked size from channel attribute (set by write() on the flush thread).
+            Integer bakedSize = ctx.channel().attr(PacketAggregationPacket.BAKED_SIZE_KEY).getAndSet(null);
+            if (bakedSize != null && bakedSize >= 0) {
                 SimpleStatManager.outRaw(size - bakedSize);
             }
             // outRaw for the raw sub-packets is already recorded inside write()

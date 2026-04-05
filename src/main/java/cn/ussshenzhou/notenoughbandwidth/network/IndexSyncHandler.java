@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
@@ -30,6 +31,12 @@ import java.util.stream.Collectors;
  */
 public class IndexSyncHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-IndexSync");
+    private static final int PENDING_TIMEOUT_SECONDS = 5;
+    private static final ScheduledExecutorService TIMEOUT_TIMER = Executors.newSingleThreadScheduledExecutor(r -> {
+        var t = new Thread(r, "NEB-PendingTimeout");
+        t.setDaemon(true);
+        return t;
+    });
 
     private static final Set<Identifier> REGISTERED_CHANNELS = new LinkedHashSet<>();
 
@@ -48,6 +55,7 @@ public class IndexSyncHandler {
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var connection = handler.connection;
+            NebConnectionRegistry.markDisabled(connection);
             ChunkCacheManager.removeServerBloomFilter(connection);
             AggregationManager.discardConnection(connection);
             ModNetworking.clearManifestChunks(connection);
@@ -66,13 +74,30 @@ public class IndexSyncHandler {
             if (!NamespaceIndexManager.ready()) {
                 NamespaceIndexManager.init(types);
             }
-            // Do NOT init AggregationManager or mark connection here.
-            // We wait for the client to send NebAckPayload before enabling the compression path.
             String serverId = NotEnoughBandwidthConfig.get().serverUUID;
             PacketByteBuf indexBuf = PacketByteBufs.create();
             new IndexSyncPayload(types, serverId).write(indexBuf);
             sender.sendPacket(new CustomPayloadS2CPacket(IndexSyncPayload.CHANNEL, indexBuf));
-            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}), awaiting NEB ack",
+
+            // Start buffering packets immediately so the initial chunk burst
+            // is captured.  Flush is deferred until NebAck arrives.
+            AggregationManager.init();
+            var connection = handler.connection;
+            NebConnectionRegistry.markPending(connection);
+
+            // Safety timeout: if NebAck never arrives (vanilla client without NEB),
+            // atomically demote from pending and discard the buffer so vanilla packets
+            // flow normally.  Capture only the player name to avoid holding handler/player refs.
+            String playerName = handler.player.getName().getString();
+            TIMEOUT_TIMER.schedule(() -> {
+                if (NebConnectionRegistry.tryDemoteFromPending(connection)) {
+                    AggregationManager.discardConnection(connection);
+                    LOGGER.warn("NEB ack timeout for {}, disabling NEB for this connection",
+                            playerName);
+                }
+            }, PENDING_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}), buffering until NEB ack",
                     dict != null ? dict.length + " bytes" : "none",
                     handler.player.getName().getString(), types.size(), serverId);
         });

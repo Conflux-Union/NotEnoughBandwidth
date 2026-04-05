@@ -46,12 +46,14 @@ public class ModNetworking {
             payload.handle(handler.connection);
         });
 
-        // Client confirmed NEB presence: enable compression path for this connection
+        // Client confirmed NEB presence: promote from pending to enabled and
+        // flush all packets that were buffered during the handshake.
         ServerPlayNetworking.registerGlobalReceiver(NebAckPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
             var connection = handler.connection;
             NebConnectionRegistry.markEnabled(connection);
             AggregationManager.init();
-            LOGGER.info("NEB ack received from {}, compression path enabled",
+            AggregationManager.flushConnection(connection);
+            LOGGER.info("NEB ack received from {}, compression path enabled, flushing buffered packets",
                     player.getName().getString());
         });
 
