@@ -3,6 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth.network;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
+import cn.ussshenzhou.notenoughbandwidth.chunkcache.PendingChunkQueue;
 import cn.ussshenzhou.notenoughbandwidth.mixin.ClientPlayNetworkHandlerInvoker;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
@@ -48,11 +49,16 @@ public class ModNetworking {
 
         // Client confirmed NEB presence: promote from pending to enabled and
         // flush all packets that were buffered during the handshake.
+        // The client sends the bloom filter manifest BEFORE NebAck, so by the
+        // time we reach this handler the bloom filter is already stored.
         ServerPlayNetworking.registerGlobalReceiver(NebAckPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
             var connection = handler.connection;
             NebConnectionRegistry.markEnabled(connection);
             AggregationManager.init();
             AggregationManager.flushConnection(connection);
+            // Replay chunk sends that were queued during PENDING — now with
+            // the bloom filter available for PCC decisions.
+            server.execute(() -> PendingChunkQueue.drainAndSend(connection));
             LOGGER.info("NEB ack received from {}, compression path enabled, flushing buffered packets",
                     player.getName().getString());
         });

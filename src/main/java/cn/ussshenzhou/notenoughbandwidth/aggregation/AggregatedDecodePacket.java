@@ -49,10 +49,17 @@ public class AggregatedDecodePacket {
 
     private Packet<?> decodeCustom(NetworkSide side) {
         if (side == NetworkSide.CLIENTBOUND) {
-            return new CustomPayloadS2CPacket(type, new PacketByteBuf(data));
+            // S2C: copy() gives the packet an independent heap buf.
+            // The caller's finally { sub.getData().release() } frees the
+            // original slice, and the copy is GC'd with the packet.
+            // We can't just retain() here because CustomPayloadS2CPacket
+            // never releases its data — getData() returns data.copy(),
+            // not the original, so the extra refCnt would leak.
+            return new CustomPayloadS2CPacket(type, new PacketByteBuf(data.copy()));
         }
-        // CustomPayloadC2SPacket.apply() releases data after onCustomPayload() returns.
-        // Retain once so the caller's finally block can safely release as well.
+        // C2S: retain once so the caller's finally block can safely release.
+        // CustomPayloadC2SPacket.apply() releases data after onCustomPayload()
+        // returns, bringing refCnt back to 0.
         data.retain();
         return new CustomPayloadC2SPacket(type, new PacketByteBuf(data));
     }

@@ -3,6 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth.network;
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
+import cn.ussshenzhou.notenoughbandwidth.chunkcache.PendingChunkQueue;
 import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
@@ -59,6 +60,7 @@ public class IndexSyncHandler {
             ChunkCacheManager.removeServerBloomFilter(connection);
             AggregationManager.discardConnection(connection);
             ModNetworking.clearManifestChunks(connection);
+            PendingChunkQueue.discard(connection);
         });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -92,6 +94,7 @@ public class IndexSyncHandler {
             TIMEOUT_TIMER.schedule(() -> {
                 if (NebConnectionRegistry.tryDemoteFromPending(connection)) {
                     AggregationManager.discardConnection(connection);
+                    PendingChunkQueue.discard(connection);
                     LOGGER.warn("NEB ack timeout for {}, disabling NEB for this connection",
                             playerName);
                 }
@@ -134,16 +137,19 @@ public class IndexSyncHandler {
 
             // Must send on the client thread — Fabric 1.20.1 rejects sends from
             // the Netty IO thread during early PLAY phase.
+            // Send bloom filter manifest BEFORE NebAck so the server has the
+            // bloom filter stored by the time NebAck triggers the flush and
+            // pending chunk drain.
             client.execute(() -> {
                 try {
-                    PacketByteBuf ackBuf = PacketByteBufs.create();
-                    new NebAckPayload().write(ackBuf);
-                    ClientPlayNetworking.send(NebAckPayload.CHANNEL, ackBuf);
                     byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
                     if (bloomBytes != null && bloomBytes.length > 0) {
                         sendChunkedManifest(bloomBytes);
                         LOGGER.info("Sent chunk cache manifest ({} bytes)", bloomBytes.length);
                     }
+                    PacketByteBuf ackBuf = PacketByteBufs.create();
+                    new NebAckPayload().write(ackBuf);
+                    ClientPlayNetworking.send(NebAckPayload.CHANNEL, ackBuf);
                 } catch (Exception e) {
                     LOGGER.warn("Failed to send NEB ack/manifest", e);
                 }

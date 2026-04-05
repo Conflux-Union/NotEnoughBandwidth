@@ -3,6 +3,7 @@ package cn.ussshenzhou.notenoughbandwidth.mixin;
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkHashUtil;
+import cn.ussshenzhou.notenoughbandwidth.chunkcache.PendingChunkQueue;
 import cn.ussshenzhou.notenoughbandwidth.network.ChunkHashPayload;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
@@ -44,6 +45,20 @@ public class ChunkDataSenderMixin {
 
         ClientConnection connection = player.networkHandler.connection;
         if (!NebConnectionRegistry.isActive(connection)) return;
+
+        // During PENDING, the bloom filter hasn't arrived yet so we can't make
+        // PCC decisions.  Queue the chunk send and replay it later with bloom
+        // filter awareness once the client's manifest has been received.
+        if (NebConnectionRegistry.isPending(connection)) {
+            ChunkDataS2CPacket pkt = cachedDataPacket.getValue();
+            if (pkt == null) {
+                pkt = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
+                cachedDataPacket.setValue(pkt);
+            }
+            PendingChunkQueue.enqueue(connection, player, pkt);
+            ci.cancel();
+            return;
+        }
 
         ChunkDataS2CPacket packet = cachedDataPacket.getValue();
         if (packet == null) {
