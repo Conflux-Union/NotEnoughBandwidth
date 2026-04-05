@@ -1,18 +1,13 @@
 accessWidener v2 named
 
-# PacketCodecDispatcher internals for direct packet encoding/decoding
-accessible class net/minecraft/network/handler/PacketCodecDispatcher$PacketType
-accessible field net/minecraft/network/handler/PacketCodecDispatcher typeToIndex Lit/unimi/dsi/fastutil/objects/Object2IntMap;
-accessible field net/minecraft/network/handler/PacketCodecDispatcher packetTypes Ljava/util/List;
-accessible field net/minecraft/network/handler/PacketCodecDispatcher packetIdGetter Ljava/util/function/Function;
-
-# EncoderHandler / DecoderHandler state for getting protocol info
-accessible field net/minecraft/network/handler/EncoderHandler state Lnet/minecraft/network/NetworkState;
-accessible field net/minecraft/network/handler/DecoderHandler state Lnet/minecraft/network/NetworkState;
-
 # ClientConnection channel field
 accessible field net/minecraft/network/ClientConnection channel Lio/netty/channel/Channel;
 
-# NetworkHandler connection fields
-accessible field net/minecraft/server/network/ServerCommonNetworkHandler connection Lnet/minecraft/network/ClientConnection;
-accessible field net/minecraft/client/network/ClientCommonNetworkHandler connection Lnet/minecraft/network/ClientConnection;
+# PacketEncoder side field (1.20.1: net.minecraft.network.PacketEncoder)
+accessible field net/minecraft/network/PacketEncoder side Lnet/minecraft/network/NetworkSide;
+
+# DecoderHandler side field (1.20.1: net.minecraft.network.DecoderHandler)
+accessible field net/minecraft/network/DecoderHandler side Lnet/minecraft/network/NetworkSide;
+
+# ServerPlayNetworkHandler connection field
+accessible field net/minecraft/server/network/ServerPlayNetworkHandler connection Lnet/minecraft/network/ClientConnection;

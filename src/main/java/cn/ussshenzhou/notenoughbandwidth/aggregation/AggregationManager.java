@@ -4,13 +4,16 @@ import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.ClientConnection;
-import net.minecraft.network.NetworkPhase;
 import net.minecraft.network.NetworkSide;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
+import net.minecraft.network.packet.c2s.play.CustomPayloadC2SPacket;
+import net.minecraft.network.packet.s2c.play.CustomPayloadS2CPacket;
+import net.minecraft.server.network.ServerPlayNetworkHandler;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +53,6 @@ public class AggregationManager {
     }
 
     private static void flush() {
-        // Purge dead connections without holding a global lock.
         PACKET_BUFFER.keySet().removeIf(c -> !c.isOpen());
         FLUSH_WAIT.keySet().removeIf(c -> !c.isOpen());
         for (var entry : PACKET_BUFFER.entrySet()) {
@@ -109,14 +111,18 @@ public class AggregationManager {
         }
     }
 
+    private static boolean isPlayPhase(ClientConnection connection) {
+        var listener = connection.getPacketListener();
+        return listener instanceof ServerPlayNetworkHandler
+                || listener instanceof ClientPlayNetworkHandler;
+    }
+
     private static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
         try {
             if (packets == null || packets.isEmpty()) {
                 return;
             }
-            var listener = connection.getPacketListener();
-            if (!connection.isOpen() || listener == null
-                    || listener.getPhase() != NetworkPhase.PLAY
+            if (!connection.isOpen() || !isPlayPhase(connection)
                     || !NebConnectionRegistry.isEnabled(connection)) {
                 packets.clear();
                 return;
@@ -124,20 +130,25 @@ public class AggregationManager {
             var encoder = DefaultChannelPipelineHelper.getPacketEncoder(
                     (DefaultChannelPipeline) connection.channel.pipeline());
             if (encoder == null) {
-                LOGGER.error("Failed to get EncoderHandler of connection {} {}.",
+                LOGGER.error("Failed to get PacketEncoder of connection {} {}.",
                         connection.getSide(), connection.getAddress());
                 return;
             }
+            // Access-widened PacketEncoder.side gives the outbound direction
+            NetworkSide encoderSide = encoder.side;
             var sendPackets = new ArrayList<>(packets);
             packets.clear();
             var aggregationPayload = new PacketAggregationPacket(
-                    sendPackets, encoder.state, connection);
-            // encoder.state.side() = outbound direction (CLIENTBOUND on server, SERVERBOUND on client)
-            Packet<?> wrapper = encoder.state.side() == NetworkSide.CLIENTBOUND
-                    ? new CustomPayloadS2CPacket(aggregationPayload)
-                    : new CustomPayloadC2SPacket(aggregationPayload);
+                    sendPackets, encoderSide, connection);
+
+            PacketByteBuf buf = new PacketByteBuf(ByteBufAllocator.DEFAULT.buffer());
+            aggregationPayload.write(buf);
+
+            Packet<?> wrapper = encoderSide == NetworkSide.CLIENTBOUND
+                    ? new CustomPayloadS2CPacket(PacketAggregationPacket.CHANNEL, buf)
+                    : new CustomPayloadC2SPacket(PacketAggregationPacket.CHANNEL, buf);
             connection.send(wrapper);
-            connection.flush();
+            connection.channel.flush();
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to flush packets.", e);
         }

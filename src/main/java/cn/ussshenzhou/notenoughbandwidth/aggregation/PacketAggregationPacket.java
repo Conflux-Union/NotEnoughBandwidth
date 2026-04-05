@@ -11,11 +11,8 @@ import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.ClientConnection;
-import net.minecraft.network.NetworkState;
+import net.minecraft.network.NetworkSide;
 import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
@@ -23,37 +20,33 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 
-public class PacketAggregationPacket implements CustomPayload {
+/**
+ * Aggregation packet that bundles multiple sub-packets into one compressed blob.
+ * In 1.20.1 this is not a CustomPayload — it's serialized manually and wrapped
+ * in a CustomPayloadS2CPacket/C2SPacket by the caller.
+ */
+public class PacketAggregationPacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
 
-    public static final Id<PacketAggregationPacket> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "packet_aggregation_packet"));
-
-    public static final PacketCodec<RegistryByteBuf, PacketAggregationPacket> CODEC =
-            PacketCodec.of(PacketAggregationPacket::write, PacketAggregationPacket::new);
-
-    @Override
-    public Id<? extends CustomPayload> getId() {
-        return TYPE;
-    }
+    public static final Identifier CHANNEL = new Identifier(ModConstants.MOD_ID, "packet_aggregation_packet");
 
     private int bakedSize;
 
     // ---- encode side ----
     private final ArrayList<AggregatedEncodePacket> packetsToEncode;
-    private final NetworkState<?> protocolInfo;
+    private final NetworkSide side;
     private ClientConnection connection;
 
     public PacketAggregationPacket(ArrayList<AggregatedEncodePacket> packetsToEncode,
-                                   NetworkState<?> protocolInfo,
+                                   NetworkSide side,
                                    ClientConnection connection) {
         this.packetsToEncode = packetsToEncode;
-        this.protocolInfo = protocolInfo;
+        this.side = side;
         this.connection = connection;
     }
 
-    public void write(RegistryByteBuf buffer) {
-        var rawBuf = new RegistryByteBuf(ByteBufAllocator.DEFAULT.buffer(), buffer.getRegistryManager());
+    public void write(PacketByteBuf buffer) {
+        var rawBuf = new PacketByteBuf(ByteBufAllocator.DEFAULT.buffer());
         try {
             packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
 
@@ -89,11 +82,11 @@ public class PacketAggregationPacket implements CustomPayload {
         }
     }
 
-    private void encodeSubPacket(RegistryByteBuf raw, AggregatedEncodePacket packet) {
+    private void encodeSubPacket(PacketByteBuf raw, AggregatedEncodePacket packet) {
         CustomPacketPrefixHelper.write(packet.type, raw);
-        var d = new RegistryByteBuf(ByteBufAllocator.DEFAULT.buffer(), raw.getRegistryManager());
+        var d = new PacketByteBuf(ByteBufAllocator.DEFAULT.buffer());
         try {
-            packet.encode(d, protocolInfo, protocolInfo.side());
+            packet.encode(d, side);
             raw.writeVarInt(d.readableBytes());
             raw.writeBytes(d);
         } finally {
@@ -102,13 +95,17 @@ public class PacketAggregationPacket implements CustomPayload {
     }
 
     // ---- decode side ----
-    private RegistryByteBuf data;
+    private PacketByteBuf data;
 
-    public PacketAggregationPacket(RegistryByteBuf buffer) {
-        this.protocolInfo = null;
+    private PacketAggregationPacket(PacketByteBuf buffer) {
+        this.side = null;
         this.packetsToEncode = null;
-        this.data = new RegistryByteBuf(buffer.retainedDuplicate(), buffer.getRegistryManager());
+        this.data = new PacketByteBuf(buffer.retainedDuplicate());
         buffer.readerIndex(buffer.writerIndex());
+    }
+
+    public static PacketAggregationPacket read(PacketByteBuf buffer) {
+        return new PacketAggregationPacket(buffer);
     }
 
     // ---- handle side ----
@@ -117,12 +114,12 @@ public class PacketAggregationPacket implements CustomPayload {
         this.connection = conn;
 
         boolean compressed = data.readBoolean();
-        RegistryByteBuf raw;
+        PacketByteBuf raw;
         if (compressed) {
             int size = data.readVarInt();
-            raw = new RegistryByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size), data.getRegistryManager());
+            raw = new PacketByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size));
         } else {
-            raw = new RegistryByteBuf(data.retain(), data.getRegistryManager());
+            raw = new PacketByteBuf(data.retain());
         }
         SimpleStatManager.inRaw(raw.readableBytes());
 
@@ -134,13 +131,14 @@ public class PacketAggregationPacket implements CustomPayload {
             raw.release();
             return;
         }
-        var inboundProtocol = decoder.state;
+        // In 1.20.1, DecoderHandler has a 'side' field (access-widened)
+        NetworkSide decoderSide = decoder.side;
         var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
         try {
             while (raw.readableBytes() > 0) {
                 var type = CustomPacketPrefixHelper.read(raw);
                 var size = raw.readVarInt();
-                var subData = new RegistryByteBuf(raw.readRetainedSlice(size), data.getRegistryManager());
+                var subData = new PacketByteBuf(raw.readRetainedSlice(size));
                 if (type == null) {
                     LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
                     subData.release();
@@ -155,7 +153,7 @@ public class PacketAggregationPacket implements CustomPayload {
 
         for (var sub : packetsToHandle) {
             try {
-                Packet<?> decoded = sub.decode(inboundProtocol);
+                Packet<?> decoded = sub.decode(decoderSide);
                 if (decoded != null) {
                     var listener = conn.getPacketListener();
                     if (listener != null) {

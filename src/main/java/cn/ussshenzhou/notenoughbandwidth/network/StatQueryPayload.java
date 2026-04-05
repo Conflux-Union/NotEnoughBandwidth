@@ -1,20 +1,16 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
-import cn.ussshenzhou.notenoughbandwidth.ModConstants;
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.util.Identifier;
 
-public record StatQueryPayload() implements CustomPayload {
-    public static final Id<StatQueryPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "stat_query"));
+public record StatQueryPayload() {
+    public static final Identifier CHANNEL = new Identifier("neb", "stat_query");
 
-    public static final PacketCodec<ByteBuf, StatQueryPayload> CODEC =
-            PacketCodec.unit(new StatQueryPayload());
+    public void write(PacketByteBuf buf) {
+        // no-op: marker packet with no payload
+    }
 
-    @Override
-    public Id<? extends CustomPayload> getId() {
-        return TYPE;
+    public static StatQueryPayload read(PacketByteBuf buf) {
+        return new StatQueryPayload();
     }
 }

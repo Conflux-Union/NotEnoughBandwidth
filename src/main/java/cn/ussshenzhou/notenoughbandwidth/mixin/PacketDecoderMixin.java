@@ -5,7 +5,7 @@ import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
-import net.minecraft.network.handler.DecoderHandler;
+import net.minecraft.network.DecoderHandler;
 import net.minecraft.network.packet.Packet;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -31,7 +31,7 @@ public class PacketDecoderMixin {
             at = @At("TAIL"))
     private void nebRecordIn(ChannelHandlerContext ctx, ByteBuf input, List<Object> out, CallbackInfo ci) {
         if (out.isEmpty()) return;
-        var last = out.getLast();
+        var last = out.get(out.size() - 1);
         if (last instanceof Packet<?> packet) {
             int consumed = neb$capturedSize - input.readableBytes();
             SimpleStatManager.inBaked(consumed);

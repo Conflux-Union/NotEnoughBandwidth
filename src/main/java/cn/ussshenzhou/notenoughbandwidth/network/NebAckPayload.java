@@ -1,9 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
-import cn.ussshenzhou.notenoughbandwidth.ModConstants;
 import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
 
 /**
@@ -11,15 +8,14 @@ import net.minecraft.util.Identifier;
  * that the client has NEB installed and can handle aggregated packets.
  * Server enables the compression path for this connection only after receiving this.
  */
-public record NebAckPayload() implements CustomPayload {
-    public static final Id<NebAckPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "ack"));
+public record NebAckPayload() {
+    public static final Identifier CHANNEL = new Identifier("neb", "ack");
 
-    public static final PacketCodec<PacketByteBuf, NebAckPayload> CODEC =
-            PacketCodec.of((payload, buf) -> {}, buf -> new NebAckPayload());
+    public void write(PacketByteBuf buf) {
+        // no-op: marker packet with no payload
+    }
 
-    @Override
-    public Id<? extends CustomPayload> getId() {
-        return TYPE;
+    public static NebAckPayload read(PacketByteBuf buf) {
+        return new NebAckPayload();
     }
 }

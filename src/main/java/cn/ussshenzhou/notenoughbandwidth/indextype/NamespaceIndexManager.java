@@ -1,10 +1,15 @@
 package cn.ussshenzhou.notenoughbandwidth.indextype;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import net.minecraft.network.NetworkSide;
+import net.minecraft.network.NetworkState;
+import net.minecraft.network.packet.Packet;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.Pair;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +22,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>
  * On Fabric, initialization is driven by a configuration-phase handshake
  * that synchronizes the index table between client and server.
+ * <p>
+ * For 1.20.1, vanilla packet classes are enumerated from NetworkState.PLAY
+ * at runtime and assigned deterministic Identifiers based on class names.
  */
 public class NamespaceIndexManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Index");
@@ -26,71 +34,14 @@ public class NamespaceIndexManager {
     private static final Object2IntMap<String> NAMESPACE_MAP = new Object2IntOpenHashMap<>();
     private static final Int2ObjectArrayMap<Object2IntMap<String>> PATH_MAPS = new Int2ObjectArrayMap<>();
 
+    // Vanilla packet class <-> NEB Identifier mapping
+    private static final Map<Class<?>, Identifier> VANILLA_CLASS_TO_IDENTIFIER = new HashMap<>();
+    private static final Map<Identifier, Integer> VANILLA_ID_S2C = new HashMap<>();
+    private static final Map<Identifier, Integer> VANILLA_ID_C2S = new HashMap<>();
+
     static {
         NAMESPACE_MAP.defaultReturnValue(-1);
     }
-
-    /**
-     * Vanilla game packet paths for minecraft namespace.
-     * Must match the PacketType IDs registered in GamePacketTypes.
-     */
-    private static final List<String> VANILLA_PATHS = List.of(
-            "bundle", "bundle_delimiter",
-            "add_entity", "animate", "award_stats",
-            "block_changed_ack", "block_destruction", "block_entity_data", "block_event", "block_update",
-            "boss_event", "change_difficulty",
-            "chunk_batch_finished", "chunk_batch_start", "chunks_biomes",
-            "clear_titles", "command_suggestions", "commands",
-            "container_close", "container_set_content", "container_set_data", "container_set_slot",
-            "cooldown", "custom_chat_completions",
-            "damage_event", "debug_sample", "delete_chat", "disguised_chat",
-            "entity_event", "entity_position_sync", "explode",
-            "forget_level_chunk", "game_event",
-            "hurt_animation", "initialize_border",
-            "level_chunk_with_light", "level_event", "level_particles", "light_update",
-            "login", "map_item_data", "merchant_offers",
-            "move_entity_pos", "move_entity_pos_rot", "move_entity_rot", "move_vehicle",
-            "open_book", "open_screen", "open_sign_editor",
-            "place_ghost_recipe", "player_abilities", "player_chat",
-            "player_combat_end", "player_combat_enter", "player_combat_kill",
-            "player_info_remove", "player_info_update", "player_look_at",
-            "player_position", "player_rotation",
-            "recipe_book_add", "recipe_book_remove", "recipe_book_settings",
-            "remove_entities", "remove_mob_effect", "respawn", "rotate_head",
-            "section_blocks_update", "select_advancements_tab", "server_data",
-            "set_action_bar_text", "set_border_center", "set_border_lerp_size",
-            "set_border_size", "set_border_warning_delay", "set_border_warning_distance",
-            "set_camera", "set_chunk_cache_center", "set_chunk_cache_radius",
-            "set_default_spawn_position", "set_display_objective",
-            "set_entity_data", "set_entity_link", "set_entity_motion",
-            "set_equipment", "set_experience", "set_health", "set_held_slot",
-            "set_objective", "set_passengers", "set_player_team", "set_score",
-            "set_simulation_distance", "set_subtitle_text", "set_time",
-            "set_title_text", "set_titles_animation",
-            "sound_entity", "sound", "start_configuration", "stop_sound",
-            "system_chat", "tab_list", "tag_query", "take_item_entity", "teleport_entity",
-            "update_advancements", "update_attributes", "update_mob_effect", "update_recipes",
-            "projectile_power",
-            "accept_teleportation", "block_entity_tag_query",
-            "bundle_item_selected", "change_game_mode",
-            "chat_ack", "chat_command", "chat_command_signed", "chat", "chat_session_update",
-            "chunk_batch_received", "client_command", "client_tick_end",
-            "command_suggestion", "configuration_acknowledged",
-            "container_button_click", "container_click", "container_slot_state_changed",
-            "edit_book", "entity_tag_query", "interact", "jigsaw_generate",
-            "lock_difficulty",
-            "move_player_pos", "move_player_pos_rot", "move_player_rot", "move_player_status_only",
-            "paddle_boat", "pick_item_from_block", "pick_item_from_entity",
-            "place_recipe", "player_action", "player_command", "player_input", "player_loaded",
-            "recipe_book_change_settings", "recipe_book_seen_recipe",
-            "rename_item", "seen_advancements", "select_trade",
-            "set_beacon", "set_carried_item", "set_command_block", "set_command_minecart",
-            "set_creative_mode_slot", "set_jigsaw_block", "set_structure_block",
-            "sign_update", "swing", "teleport_to_entity",
-            "use_item_on", "use_item",
-            "reset_score", "ticking_state", "ticking_step",
-            "set_cursor_item", "set_player_inventory"
-    );
 
     public synchronized static void init(List<Identifier> types) {
         initialized = false;
@@ -98,12 +49,15 @@ public class NamespaceIndexManager {
         PATHS.clear();
         NAMESPACE_MAP.clear();
         PATH_MAPS.clear();
+        VANILLA_CLASS_TO_IDENTIFIER.clear();
+        VANILLA_ID_S2C.clear();
+        VANILLA_ID_C2S.clear();
 
         AtomicInteger namespaceIndex = new AtomicInteger(1);
         NAMESPACES.add("ILLEGAL");
         PATHS.add(new ArrayList<>());
 
-        indexVanillaPackets(namespaceIndex);
+        initVanillaPackets(namespaceIndex);
         indexCustomPayloads(types, namespaceIndex);
 
         if (LOGGER.isDebugEnabled()) {
@@ -119,8 +73,70 @@ public class NamespaceIndexManager {
         initialized = true;
     }
 
-    private static void indexVanillaPackets(AtomicInteger namespaceIndex) {
-        VANILLA_PATHS.forEach(path -> fillSingle(namespaceIndex, Identifier.ofVanilla(path)));
+    private static void initVanillaPackets(AtomicInteger namespaceIndex) {
+        initVanillaForSide(NetworkSide.CLIENTBOUND, namespaceIndex);
+        initVanillaForSide(NetworkSide.SERVERBOUND, namespaceIndex);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void initVanillaForSide(NetworkSide side, AtomicInteger namespaceIndex) {
+        Int2ObjectMap<Class<? extends Packet<?>>> map =
+                (Int2ObjectMap<Class<? extends Packet<?>>>) (Int2ObjectMap<?>) NetworkState.PLAY.getPacketIdToPacketMap(side);
+
+        // Sort by int ID for deterministic ordering
+        var entries = new ArrayList<>(map.int2ObjectEntrySet());
+        entries.sort(Comparator.comparingInt(Int2ObjectMap.Entry::getIntKey));
+
+        for (var entry : entries) {
+            Class<?> clazz = entry.getValue();
+            // Skip if already mapped from the other side
+            if (VANILLA_CLASS_TO_IDENTIFIER.containsKey(clazz)) {
+                Identifier existingId = VANILLA_CLASS_TO_IDENTIFIER.get(clazz);
+                if (side == NetworkSide.CLIENTBOUND) {
+                    VANILLA_ID_S2C.put(existingId, entry.getIntKey());
+                } else {
+                    VANILLA_ID_C2S.put(existingId, entry.getIntKey());
+                }
+                continue;
+            }
+
+            String path = toSnakeCase(clazz.getSimpleName());
+            Identifier id = new Identifier("minecraft", path);
+            fillSingle(namespaceIndex, id);
+            VANILLA_CLASS_TO_IDENTIFIER.put(clazz, id);
+            if (side == NetworkSide.CLIENTBOUND) {
+                VANILLA_ID_S2C.put(id, entry.getIntKey());
+            } else {
+                VANILLA_ID_C2S.put(id, entry.getIntKey());
+            }
+        }
+    }
+
+    /**
+     * Convert a CamelCase class name to snake_case path.
+     * E.g. "ChunkDataS2CPacket" -> "chunk_data_s2c_packet"
+     */
+    private static String toSnakeCase(String name) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (Character.isUpperCase(c)) {
+                if (i > 0) {
+                    // Don't insert underscore between consecutive uppercase (e.g. S2C)
+                    char prev = name.charAt(i - 1);
+                    if (!Character.isUpperCase(prev) && prev != '_') {
+                        sb.append('_');
+                    } else if (Character.isUpperCase(prev) && i + 1 < name.length()
+                            && Character.isLowerCase(name.charAt(i + 1))) {
+                        sb.append('_');
+                    }
+                }
+                sb.append(Character.toLowerCase(c));
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private static void indexCustomPayloads(List<Identifier> types, AtomicInteger namespaceIndex) {
@@ -165,7 +181,29 @@ public class NamespaceIndexManager {
         if (namespaceIndex == 0) {
             throw new UnsupportedOperationException("namespaceIndex should not be 0");
         }
-        return Identifier.of(NAMESPACES.get(namespaceIndex), PATHS.get(namespaceIndex).get(pathIndex));
+        return new Identifier(NAMESPACES.get(namespaceIndex), PATHS.get(namespaceIndex).get(pathIndex));
+    }
+
+    /**
+     * Get the NEB Identifier assigned to a vanilla packet class.
+     * Returns null if the class is not a registered vanilla packet.
+     */
+    @Nullable
+    public static Identifier getVanillaIdentifier(Class<?> packetClass) {
+        return VANILLA_CLASS_TO_IDENTIFIER.get(packetClass);
+    }
+
+    /**
+     * Get the vanilla int packet ID for a given NEB Identifier on the specified side.
+     * Returns null if the identifier is not a vanilla packet on that side.
+     */
+    @Nullable
+    public static Integer getVanillaPacketId(Identifier type, NetworkSide side) {
+        if (side == NetworkSide.CLIENTBOUND) {
+            return VANILLA_ID_S2C.get(type);
+        } else {
+            return VANILLA_ID_C2S.get(type);
+        }
     }
 
     public static boolean ready() {

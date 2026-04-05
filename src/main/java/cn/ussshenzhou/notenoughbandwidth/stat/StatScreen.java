@@ -2,12 +2,12 @@ package cn.ussshenzhou.notenoughbandwidth.stat;
 
 import cn.ussshenzhou.notenoughbandwidth.network.StatQueryPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.*;
-import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.chunkCacheSavedBytesServer;
 
 public class StatScreen extends Screen {
     private final String client = "Client";
@@ -36,22 +36,24 @@ public class StatScreen extends Screen {
         super.tick();
         if (tick % 10 == 0) {
             try {
-                ClientPlayNetworking.send(new StatQueryPayload());
+                var buf = PacketByteBufs.create();
+                new StatQueryPayload().write(buf);
+                ClientPlayNetworking.send(StatQueryPayload.CHANNEL, buf);
             } catch (Exception ignored) {
             }
-            actualC = "↓ Inbound  "
+            actualC = "\u2193 Inbound  "
                     + getReadableSpeed((int) LOCAL.inboundSpeedBaked().averageIn1s())
                     + "  Total  "
                     + getReadableSize(LOCAL.inboundBytesBaked().get())
-                    + "    ↑ Outbound  "
+                    + "    \u2191 Outbound  "
                     + getReadableSpeed((int) LOCAL.outboundSpeedBaked().averageIn1s())
                     + "  Total  "
                     + getReadableSize(LOCAL.outboundBytesBaked().get());
-            rawC = "↓ Inbound  "
+            rawC = "\u2193 Inbound  "
                     + getReadableSpeed((int) LOCAL.inboundSpeedRaw().averageIn1s())
                     + "  Total  "
                     + getReadableSize(LOCAL.inboundBytesRaw().get())
-                    + "    ↑ Outbound  "
+                    + "    \u2191 Outbound  "
                     + getReadableSpeed((int) LOCAL.outboundSpeedRaw().averageIn1s())
                     + "  Total  "
                     + getReadableSize(LOCAL.outboundBytesRaw().get());
@@ -66,19 +68,19 @@ public class StatScreen extends Screen {
                     + (outRaw > 0 ? String.format("%.2f", 100d * outBaked / outRaw) : "N/A")
                     + "%";
 
-            actualS = "↓ Inbound  "
+            actualS = "\u2193 Inbound  "
                     + getReadableSpeed((int) inboundSpeedBakedServer)
                     + "  Total  "
                     + getReadableSize(inboundBytesBakedServer)
-                    + "    ↑ Outbound  "
+                    + "    \u2191 Outbound  "
                     + getReadableSpeed((int) outboundSpeedBakedServer)
                     + "  Total  "
                     + getReadableSize(outboundBytesBakedServer);
-            rawS = "↓ Inbound  "
+            rawS = "\u2193 Inbound  "
                     + getReadableSpeed((int) inboundSpeedRawServer)
                     + "  Total  "
                     + getReadableSize(inboundBytesRawServer)
-                    + "    ↑ Outbound  "
+                    + "    \u2191 Outbound  "
                     + getReadableSpeed((int) outboundSpeedRawServer)
                     + "  Total  "
                     + getReadableSize(outboundBytesRawServer);
@@ -91,11 +93,11 @@ public class StatScreen extends Screen {
                     + "%";
 
             if (dictSizeServer > 0) {
-                dictStatus = "Zstd Dictionary  §a✔ Active§r  (" + dictSizeServer / 1024 + " KiB)";
+                dictStatus = "Zstd Dictionary  \u00a7a\u2714 Active\u00a7r  (" + dictSizeServer / 1024 + " KiB)";
             } else if (dictSampleThresholdServer > 0) {
-                dictStatus = "Zstd Dictionary  §7Sampling§r  " + dictSampleCountServer + "/" + dictSampleThresholdServer;
+                dictStatus = "Zstd Dictionary  \u00a77Sampling\u00a7r  " + dictSampleCountServer + "/" + dictSampleThresholdServer;
             } else {
-                dictStatus = "Zstd Dictionary  §7-§r";
+                dictStatus = "Zstd Dictionary  \u00a77-\u00a7r";
             }
 
             long total = chunkCacheHitsServer + chunkCacheMissesServer;
@@ -103,8 +105,8 @@ public class StatScreen extends Screen {
                     ? String.format("%.1f%%", 100.0 * chunkCacheHitsServer / total)
                     : "N/A";
             chunkCacheStatus = "Chunk Cache  "
-                    + "§aHits§r " + chunkCacheHitsServer
-                    + "  §cMisses§r " + chunkCacheMissesServer
+                    + "\u00a7aHits\u00a7r " + chunkCacheHitsServer
+                    + "  \u00a7cMisses\u00a7r " + chunkCacheMissesServer
                     + "  Hit Rate " + hitRate
                     + "  Saved " + getReadableSize(chunkCacheSavedBytesServer);
         }
@@ -115,45 +117,45 @@ public class StatScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0x80000000);
         var tr = this.textRenderer;
-        context.drawText(tr, client, 10, 10, 0xFFFFFF, true);
-        context.drawText(tr, actual, 10, 30, 0xFFFFFF, true);
-        context.drawText(tr, actualC, 10, 40, 0xFFFFFF, true);
-        context.drawText(tr, raw, 10, 60, 0xFFFFFF, true);
-        context.drawText(tr, rawC, 10, 70, 0xFFFFFF, true);
-        context.drawText(tr, ratioC, 10, 90, 0xFFFFFF, true);
+        context.drawTextWithShadow(tr, client, 10, 10, 0xFFFFFF);
+        context.drawTextWithShadow(tr, actual, 10, 30, 0xFFFFFF);
+        context.drawTextWithShadow(tr, actualC, 10, 40, 0xFFFFFF);
+        context.drawTextWithShadow(tr, raw, 10, 60, 0xFFFFFF);
+        context.drawTextWithShadow(tr, rawC, 10, 70, 0xFFFFFF);
+        context.drawTextWithShadow(tr, ratioC, 10, 90, 0xFFFFFF);
 
-        context.drawText(tr, server, 10, 120, 0xFFFFFF, true);
-        context.drawText(tr, actual, 10, 140, 0xFFFFFF, true);
-        context.drawText(tr, actualS, 10, 150, 0xFFFFFF, true);
-        context.drawText(tr, raw, 10, 170, 0xFFFFFF, true);
-        context.drawText(tr, rawS, 10, 180, 0xFFFFFF, true);
-        context.drawText(tr, ratioS, 10, 200, 0xFFFFFF, true);
+        context.drawTextWithShadow(tr, server, 10, 120, 0xFFFFFF);
+        context.drawTextWithShadow(tr, actual, 10, 140, 0xFFFFFF);
+        context.drawTextWithShadow(tr, actualS, 10, 150, 0xFFFFFF);
+        context.drawTextWithShadow(tr, raw, 10, 170, 0xFFFFFF);
+        context.drawTextWithShadow(tr, rawS, 10, 180, 0xFFFFFF);
+        context.drawTextWithShadow(tr, ratioS, 10, 200, 0xFFFFFF);
 
-        context.drawText(tr, dictStatus, 10, 230, 0xFFFFFF, true);
-        context.drawText(tr, chunkCacheStatus, 10, 250, 0xFFFFFF, true);
+        context.drawTextWithShadow(tr, dictStatus, 10, 230, 0xFFFFFF);
+        context.drawTextWithShadow(tr, chunkCacheStatus, 10, 250, 0xFFFFFF);
 
         super.render(context, mouseX, mouseY, delta);
     }
 
     private String getReadableSpeed(int bytes) {
         if (bytes < 1000) {
-            return bytes + " §7Bytes/S§r";
+            return bytes + " \u00a77Bytes/S\u00a7r";
         } else if (bytes < 1000_000) {
-            return String.format("%.1f §7KiB/S§r", bytes / 1024f);
+            return String.format("%.1f \u00a77KiB/S\u00a7r", bytes / 1024f);
         } else {
-            return String.format("%.2f §7MiB/S§r", bytes / (1024 * 1024f));
+            return String.format("%.2f \u00a77MiB/S\u00a7r", bytes / (1024 * 1024f));
         }
     }
 
     private String getReadableSize(long bytes) {
         if (bytes < 1000) {
-            return bytes + " §7Bytes§r";
+            return bytes + " \u00a77Bytes\u00a7r";
         } else if (bytes < 1000_000) {
-            return String.format("%.1f §7KiB§r", bytes / 1024d);
+            return String.format("%.1f \u00a77KiB\u00a7r", bytes / 1024d);
         } else if (bytes < 1000_000_000) {
-            return String.format("%.2f §7MiB§r", bytes / (1024 * 1024d));
+            return String.format("%.2f \u00a77MiB\u00a7r", bytes / (1024 * 1024d));
         } else {
-            return String.format("%.2f §7GiB§r", bytes / (1024 * 1024 * 1024d));
+            return String.format("%.2f \u00a77GiB\u00a7r", bytes / (1024 * 1024 * 1024d));
         }
     }
 }

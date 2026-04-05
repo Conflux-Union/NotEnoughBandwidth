@@ -7,7 +7,6 @@ import com.google.common.hash.Hashing;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.nbt.*;
 import net.minecraft.network.packet.s2c.play.ChunkData;
-import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -37,13 +36,12 @@ public final class ChunkHashUtil {
     public record Result(long hash, int dataBytes) {}
 
     @SuppressWarnings("deprecation")
-    public static Result compute(ChunkData chunkData, DynamicRegistryManager registryManager) {
-        return compute(chunkData, registryManager, "?", 0, 0);
+    public static Result compute(ChunkData chunkData) {
+        return compute(chunkData, "?", 0, 0);
     }
 
     @SuppressWarnings("deprecation")
-    public static Result compute(ChunkData chunkData, DynamicRegistryManager registryManager,
-                                 String side, int chunkX, int chunkZ) {
+    public static Result compute(ChunkData chunkData, String side, int chunkX, int chunkZ) {
         var hasher = Hashing.murmur3_128().newHasher();
 
         // 1. Sections data — raw byte[], always roundtrip-stable.
@@ -102,44 +100,44 @@ public final class ChunkHashUtil {
             return;
         }
         hasher.putByte(element.getType());
-        switch (element) {
-            case NbtCompound c -> {
-                var keys = new ArrayList<>(c.getKeys());
-                Collections.sort(keys);
-                hasher.putInt(keys.size());
-                for (var key : keys) {
-                    hasher.putInt(key.length());
-                    hasher.putString(key, StandardCharsets.UTF_8);
-                    hashNbtElement(hasher, c.get(key));
-                }
+        if (element instanceof NbtCompound c) {
+            var keys = new ArrayList<>(c.getKeys());
+            Collections.sort(keys);
+            hasher.putInt(keys.size());
+            for (var key : keys) {
+                hasher.putInt(key.length());
+                hasher.putString(key, StandardCharsets.UTF_8);
+                hashNbtElement(hasher, c.get(key));
             }
-            case NbtList l -> {
-                hasher.putInt(l.size());
-                for (var e : l) hashNbtElement(hasher, e);
-            }
-            case NbtByte b -> hasher.putByte(b.byteValue());
-            case NbtShort s -> hasher.putShort(s.shortValue());
-            case NbtInt i -> hasher.putInt(i.intValue());
-            case NbtLong l -> hasher.putLong(l.longValue());
-            case NbtFloat f -> hasher.putFloat(f.floatValue());
-            case NbtDouble d -> hasher.putDouble(d.doubleValue());
-            case NbtString s -> {
-                hasher.putInt(s.asString().length());
-                hasher.putString(s.asString(), StandardCharsets.UTF_8);
-            }
-            case NbtByteArray a -> {
-                hasher.putInt(a.size());
-                for (byte b : a.getByteArray()) hasher.putByte(b);
-            }
-            case NbtIntArray a -> {
-                hasher.putInt(a.size());
-                for (int i : a.getIntArray()) hasher.putInt(i);
-            }
-            case NbtLongArray a -> {
-                hasher.putInt(a.size());
-                for (long l : a.getLongArray()) hasher.putLong(l);
-            }
-            default -> LOGGER.warn("Unknown NBT type {} in chunk hash, hash may be unstable", element.getType());
+        } else if (element instanceof NbtList l) {
+            hasher.putInt(l.size());
+            for (var e : l) hashNbtElement(hasher, e);
+        } else if (element instanceof NbtByte b) {
+            hasher.putByte(b.byteValue());
+        } else if (element instanceof NbtShort s) {
+            hasher.putShort(s.shortValue());
+        } else if (element instanceof NbtInt ni) {
+            hasher.putInt(ni.intValue());
+        } else if (element instanceof NbtLong nl) {
+            hasher.putLong(nl.longValue());
+        } else if (element instanceof NbtFloat f) {
+            hasher.putFloat(f.floatValue());
+        } else if (element instanceof NbtDouble d) {
+            hasher.putDouble(d.doubleValue());
+        } else if (element instanceof NbtString s) {
+            hasher.putInt(s.asString().length());
+            hasher.putString(s.asString(), StandardCharsets.UTF_8);
+        } else if (element instanceof NbtByteArray a) {
+            hasher.putInt(a.size());
+            for (byte b : a.getByteArray()) hasher.putByte(b);
+        } else if (element instanceof NbtIntArray a) {
+            hasher.putInt(a.size());
+            for (int ia : a.getIntArray()) hasher.putInt(ia);
+        } else if (element instanceof NbtLongArray a) {
+            hasher.putInt(a.size());
+            for (long la : a.getLongArray()) hasher.putLong(la);
+        } else {
+            LOGGER.warn("Unknown NBT type {} in chunk hash, hash may be unstable", element.getType());
         }
     }
 }

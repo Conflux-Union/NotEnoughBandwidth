@@ -1,58 +1,52 @@
 package cn.ussshenzhou.notenoughbandwidth.mixin;
 
 import cn.ussshenzhou.notenoughbandwidth.chunk.CachedChunkTrackingView;
-import net.minecraft.server.network.ChunkFilter;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ChunkTicketType;
-import net.minecraft.server.world.ServerChunkLoadingManager;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.world.ThreadedAnvilChunkStorage;
 import net.minecraft.util.math.ChunkPos;
+import org.apache.commons.lang3.mutable.MutableObject;
+import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import org.spongepowered.asm.mixin.*;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Mixin(ServerChunkLoadingManager.class)
+@Mixin(ThreadedAnvilChunkStorage.class)
 public abstract class ChunkMapMixin {
 
     @Shadow
     @Final
     ServerWorld world;
 
+    @Shadow
+    int watchDistance;
+
     @Unique
     private static final AtomicReference<ChunkTicketType<ChunkPos>> nebDccTicket = new AtomicReference<>();
 
-    @Shadow
-    int getViewDistance(ServerPlayerEntity player) { throw new AssertionError(); }
-
-    @Shadow
-    private void track(ServerPlayerEntity player, ChunkPos pos) {}
-
-    @Shadow
-    private static void untrack(ServerPlayerEntity player, ChunkPos pos) {}
-
-    @Shadow
-    public abstract net.minecraft.server.world.ChunkTicketManager getTicketManager();
-
     /**
-     * @author NEB
-     * @reason Replace vanilla chunk tracking with DCC-aware version
+     * Inject at HEAD of updatePosition to apply DCC chunk tracking.
+     * In 1.20.1, updatePosition handles player movement and chunk tracking updates.
      */
-    @Overwrite
-    private void sendWatchPackets(ServerPlayerEntity player) {
+    @Inject(method = "updatePosition", at = @At("HEAD"))
+    private void nebDccUpdatePosition(ServerPlayerEntity player, CallbackInfo ci) {
         if (player.getWorld() != this.world) {
             return;
         }
-        var ticketManager = getTicketManager();
-        CachedChunkTrackingView.onUpdateChunkTracking(player, getViewDistance(player), new CachedChunkTrackingView.Context() {
+        CachedChunkTrackingView.onUpdateChunkTracking(player, watchDistance, new CachedChunkTrackingView.Context() {
             @Override
             public void startChunkTracking(ChunkPos pos) {
-                track(player, pos);
+                // Chunk tracking start is handled by vanilla's updatePosition
             }
 
             @Override
             public void stopChunkTracking(ChunkPos pos) {
-                untrack(player, pos);
+                // Chunk untracking is handled by vanilla's updatePosition
             }
 
             @Override
@@ -64,7 +58,7 @@ public abstract class ChunkMapMixin {
                     nebDccTicket.compareAndSet(ticketType, newType);
                     ticketType = nebDccTicket.get();
                 }
-                ticketManager.addTicket(ticketType, pos, 1, pos);
+                world.getChunkManager().addTicket(ticketType, pos, 1, pos);
             }
         });
     }

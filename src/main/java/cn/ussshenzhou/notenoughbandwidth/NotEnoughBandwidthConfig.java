@@ -8,7 +8,6 @@ import com.google.gson.annotations.Expose;
 import net.minecraft.util.math.MathHelper;
 
 import java.util.HashSet;
-import java.util.UUID;
 
 public class NotEnoughBandwidthConfig implements TConfig {
 
@@ -33,13 +32,13 @@ public class NotEnoughBandwidthConfig implements TConfig {
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
         add("minecraft:finish_configuration");
-        add(PacketAggregationPacket.TYPE.id().toString());
-        add(DictionarySyncPayload.TYPE.id().toString());
-        add(IndexSyncPayload.TYPE.id().toString());
-        add(NebAckPayload.TYPE.id().toString());
-        add(ChunkCacheManifestPayload.TYPE.id().toString());
-        add(ChunkHashPayload.TYPE.id().toString());
-        add(ChunkRequestPayload.TYPE.id().toString());
+        add(PacketAggregationPacket.CHANNEL.toString());
+        add(DictionarySyncPayload.CHANNEL.toString());
+        add(IndexSyncPayload.CHANNEL.toString());
+        add(NebAckPayload.CHANNEL.toString());
+        add(ChunkCacheManifestPayload.CHANNEL.toString());
+        add(ChunkHashPayload.CHANNEL.toString());
+        add(ChunkRequestPayload.CHANNEL.toString());
         add("minecraft:login");
         add("minecraft:chat_command");
         add("minecraft:chat_command_signed");

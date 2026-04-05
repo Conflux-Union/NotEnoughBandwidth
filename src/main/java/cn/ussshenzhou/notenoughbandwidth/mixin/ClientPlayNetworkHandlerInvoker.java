@@ -18,7 +18,7 @@ public interface ClientPlayNetworkHandlerInvoker {
     void nebLoadChunk(int x, int z, ChunkData chunkData);
 
     @Invoker("readLightData")
-    void nebReadLightData(int x, int z, LightData lightData, boolean bl);
+    void nebReadLightData(int x, int z, LightData lightData);
 
     @Invoker("scheduleRenderChunk")
     void nebScheduleRenderChunk(WorldChunk chunk, int x, int z);

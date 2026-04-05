@@ -7,12 +7,13 @@ import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import io.netty.channel.local.LocalAddress;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.ClientConnection;
-import net.minecraft.network.NetworkPhase;
 import net.minecraft.network.PacketCallbacks;
 import net.minecraft.network.listener.PacketListener;
 import net.minecraft.network.packet.BundlePacket;
 import net.minecraft.network.packet.Packet;
+import net.minecraft.server.network.ServerPlayNetworkHandler;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -30,33 +31,28 @@ public abstract class ConnectionMixin {
     private volatile PacketListener packetListener;
 
     @Shadow
-    public abstract void send(Packet<?> packet, @Nullable PacketCallbacks callbacks, boolean flush);
+    public abstract void send(Packet<?> packet, @Nullable PacketCallbacks callbacks);
 
     @Shadow
     public abstract SocketAddress getAddress();
 
-    @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/PacketCallbacks;Z)V",
+    @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/PacketCallbacks;)V",
             at = @At("HEAD"), cancellable = true)
     private void nebPacketAggregate(Packet<?> packet, @Nullable PacketCallbacks callbacks,
-                                    boolean flush, CallbackInfo ci) {
-        // Capture volatile field once to avoid TOCTOU null-pointer race.
+                                    CallbackInfo ci) {
         var listener = this.packetListener;
         if (this.getAddress() instanceof LocalAddress
                 || listener == null
-                || listener.getPhase() != NetworkPhase.PLAY
+                || !(listener instanceof ServerPlayNetworkHandler || listener instanceof ClientPlayNetworkHandler)
                 || !NamespaceIndexManager.ready()) {
             return;
         }
-        // Vanilla client: no NEB ack was received, fall through to vanilla send path.
         if (!NebConnectionRegistry.isEnabled((ClientConnection) (Object) this)) {
             return;
         }
-        // Never aggregate the aggregation wrapper itself — would cause recursive nesting.
-        if (PacketAggregationPacket.TYPE.id().equals(PacketUtil.getTrueType(packet))) {
+        if (PacketAggregationPacket.CHANNEL.equals(PacketUtil.getTrueType(packet))) {
             return;
         }
-        // Packets with callbacks (disconnect, resource pack ack, etc.) must go through
-        // the vanilla path so callbacks fire correctly. Flush first to preserve ordering.
         if (callbacks != null || NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {
             AggregationManager.flushConnectionSync((ClientConnection) (Object) this);
             return;
@@ -65,8 +61,7 @@ public abstract class ConnectionMixin {
             var subPackets = new java.util.ArrayList<Packet<?>>();
             bundlePacket.getPackets().forEach(subPackets::add);
             for (int i = 0; i < subPackets.size(); i++) {
-                // Only attach the original callbacks to the last sub-packet so they fire once.
-                this.send(subPackets.get(i), i == subPackets.size() - 1 ? callbacks : null, flush);
+                this.send(subPackets.get(i), i == subPackets.size() - 1 ? callbacks : null);
             }
             ci.cancel();
             return;

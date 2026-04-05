@@ -8,9 +8,9 @@ import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.s2c.play.ChunkData;
 import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import net.minecraft.network.packet.s2c.play.LightData;
@@ -26,46 +26,47 @@ public class ModNetworking {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Network");
 
     public static void registerCommon() {
-        // Register payload types
-        PayloadTypeRegistry.playS2C().register(PacketAggregationPacket.TYPE, PacketAggregationPacket.CODEC);
-        PayloadTypeRegistry.playC2S().register(PacketAggregationPacket.TYPE, PacketAggregationPacket.CODEC);
-        PayloadTypeRegistry.playC2S().register(StatQueryPayload.TYPE, StatQueryPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(StatRespondPayload.TYPE, StatRespondPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(NebAckPayload.TYPE, NebAckPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(ChunkCacheManifestPayload.TYPE, ChunkCacheManifestPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(ChunkRequestPayload.TYPE, ChunkRequestPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(ChunkHashPayload.TYPE, ChunkHashPayload.CODEC);
+        // Track all channels for index sync
+        IndexSyncHandler.registerChannel(PacketAggregationPacket.CHANNEL);
+        IndexSyncHandler.registerChannel(NebAckPayload.CHANNEL);
+        IndexSyncHandler.registerChannel(ChunkCacheManifestPayload.CHANNEL);
+        IndexSyncHandler.registerChannel(ChunkRequestPayload.CHANNEL);
+        IndexSyncHandler.registerChannel(ChunkHashPayload.CHANNEL);
+        IndexSyncHandler.registerChannel(StatQueryPayload.CHANNEL);
+        IndexSyncHandler.registerChannel(StatRespondPayload.CHANNEL);
 
         // Server-side handlers
-        ServerPlayNetworking.registerGlobalReceiver(PacketAggregationPacket.TYPE, (payload, context) -> {
-            payload.handle(context.player().networkHandler.connection);
+        ServerPlayNetworking.registerGlobalReceiver(PacketAggregationPacket.CHANNEL, (server, player, handler, buf, responseSender) -> {
+            var payload = PacketAggregationPacket.read(new PacketByteBuf(buf.copy()));
+            payload.handle(handler.connection);
         });
 
         // Client confirmed NEB presence: enable compression path for this connection
-        ServerPlayNetworking.registerGlobalReceiver(NebAckPayload.TYPE, (payload, context) -> {
-            var connection = context.player().networkHandler.connection;
+        ServerPlayNetworking.registerGlobalReceiver(NebAckPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
+            var connection = handler.connection;
             NebConnectionRegistry.markEnabled(connection);
             AggregationManager.init();
             LOGGER.info("NEB ack received from {}, compression path enabled",
-                    context.player().getName().getString());
+                    player.getName().getString());
         });
 
         // Client uploads its bloom filter; store it for chunk-send optimization.
-        ServerPlayNetworking.registerGlobalReceiver(ChunkCacheManifestPayload.TYPE, (payload, context) -> {
-            var connection = context.player().networkHandler.connection;
+        ServerPlayNetworking.registerGlobalReceiver(ChunkCacheManifestPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
+            var payload = ChunkCacheManifestPayload.read(new PacketByteBuf(buf.copy()));
+            var connection = handler.connection;
             if (payload.bloomFilterBytes() != null && payload.bloomFilterBytes().length > 0) {
                 ChunkCacheManager.setServerBloomFilter(connection, payload.bloomFilterBytes());
                 LOGGER.info("Received chunk cache manifest from {} ({} bytes)",
-                        context.player().getName().getString(), payload.bloomFilterBytes().length);
+                        player.getName().getString(), payload.bloomFilterBytes().length);
             }
         });
 
         // Client didn't have the chunk despite bloom-filter hit; resend full data.
-        ServerPlayNetworking.registerGlobalReceiver(ChunkRequestPayload.TYPE, (payload, context) -> {
-            ServerPlayerEntity player = context.player();
+        ServerPlayNetworking.registerGlobalReceiver(ChunkRequestPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
+            var payload = ChunkRequestPayload.read(new PacketByteBuf(buf.copy()));
             ServerWorld world = player.getServerWorld();
             ChunkPos pos = new ChunkPos(payload.chunkX(), payload.chunkZ());
-            world.getServer().execute(() -> {
+            server.execute(() -> {
                 var chunk = world.getChunkManager().getWorldChunk(pos.x, pos.z);
                 if (chunk != null) {
                     player.networkHandler.sendPacket(
@@ -81,10 +82,9 @@ public class ModNetworking {
             });
         });
 
-        ServerPlayNetworking.registerGlobalReceiver(StatQueryPayload.TYPE, (payload, context) -> {
-            ServerPlayerEntity player = context.player();
+        ServerPlayNetworking.registerGlobalReceiver(StatQueryPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
             if (player.hasPermissionLevel(2)) {
-                ServerPlayNetworking.send(player, new StatRespondPayload(
+                var respond = new StatRespondPayload(
                         LOCAL.inboundBytesBaked().get(),
                         LOCAL.inboundBytesRaw().get(),
                         LOCAL.outboundBytesBaked().get(),
@@ -99,19 +99,24 @@ public class ModNetworking {
                         SimpleStatManager.chunkCacheHits.get(),
                         SimpleStatManager.chunkCacheMisses.get(),
                         SimpleStatManager.chunkCacheSavedBytes.get()
-                ));
+                );
+                PacketByteBuf sendBuf = PacketByteBufs.create();
+                respond.write(sendBuf);
+                ServerPlayNetworking.send(player, StatRespondPayload.CHANNEL, sendBuf);
             }
         });
     }
 
     public static void registerClient() {
-        ClientPlayNetworking.registerGlobalReceiver(PacketAggregationPacket.TYPE, (payload, context) -> {
-            payload.handle(context.player().networkHandler.connection);
+        ClientPlayNetworking.registerGlobalReceiver(PacketAggregationPacket.CHANNEL, (client, handler, buf, responseSender) -> {
+            var payload = PacketAggregationPacket.read(new PacketByteBuf(buf.copy()));
+            payload.handle(handler.getConnection());
         });
 
         // Server says: "you probably have this chunk cached".
         // Load from local DB, or fall back to requesting the full packet.
-        ClientPlayNetworking.registerGlobalReceiver(ChunkHashPayload.TYPE, (payload, context) -> {
+        ClientPlayNetworking.registerGlobalReceiver(ChunkHashPayload.CHANNEL, (client, handler, buf, responseSender) -> {
+            var payload = ChunkHashPayload.read(new PacketByteBuf(buf.copy()));
             byte[] cachedBytes = ChunkCacheManager.getClientCachedChunk(payload.contentHash());
             if (cachedBytes != null) {
                 // Count the skipped chunk payload in raw stats so Ratio reflects PCC savings.
@@ -119,49 +124,50 @@ public class ModNetworking {
             }
             if (cachedBytes == null) {
                 // Bloom-filter false positive or stale cache — request full data.
-                ClientPlayNetworking.send(new ChunkRequestPayload(payload.chunkX(), payload.chunkZ()));
+                PacketByteBuf reqBuf = PacketByteBufs.create();
+                new ChunkRequestPayload(payload.chunkX(), payload.chunkZ()).write(reqBuf);
+                ClientPlayNetworking.send(ChunkRequestPayload.CHANNEL, reqBuf);
                 LOGGER.debug("Cache miss for chunk ({},{}), requesting full data", payload.chunkX(), payload.chunkZ());
                 return;
             }
             // Deserialize the cached bytes and apply to the world on the main thread.
-            var registryManager = context.player().networkHandler.getRegistryManager();
             // wrappedBuffer does not copy the array; release after deserialization (before execute).
             var inner = Unpooled.wrappedBuffer(cachedBytes);
             ChunkData chunkData;
             LightData lightData;
             try {
-                var buf = new RegistryByteBuf(inner, registryManager);
+                var packetBuf = new PacketByteBuf(inner);
                 int x = payload.chunkX();
                 int z = payload.chunkZ();
-                chunkData = new ChunkData(buf, x, z);
-                lightData = new LightData(buf, x, z);
+                chunkData = new ChunkData(packetBuf, x, z);
+                lightData = new LightData(packetBuf, x, z);
             } catch (Exception e) {
                 LOGGER.error("Failed to deserialize cached chunk ({},{}), evicting corrupt entry and requesting full data",
                         payload.chunkX(), payload.chunkZ(), e);
                 // Remove the corrupt entry so we don't hit the same failure on every future load.
                 ChunkCacheManager.deleteClientCachedChunk(payload.contentHash());
-                ClientPlayNetworking.send(new ChunkRequestPayload(payload.chunkX(), payload.chunkZ()));
+                PacketByteBuf reqBuf = PacketByteBufs.create();
+                new ChunkRequestPayload(payload.chunkX(), payload.chunkZ()).write(reqBuf);
+                ClientPlayNetworking.send(ChunkRequestPayload.CHANNEL, reqBuf);
                 return;
             } finally {
                 // Release wrappedBuffer immediately after deserialization; the parsed objects hold their own copies.
                 inner.release();
             }
-            var invoker = (ClientPlayNetworkHandlerInvoker) context.player().networkHandler;
+            var invoker = (ClientPlayNetworkHandlerInvoker) handler;
             int x = payload.chunkX();
             int z = payload.chunkZ();
-            context.client().execute(() -> {
+            client.execute(() -> {
                 try {
                     invoker.nebLoadChunk(x, z, chunkData);
-                    var world = context.client().world;
+                    var world = client.world;
                     if (world != null) {
-                        world.enqueueChunkUpdate(() -> {
-                            invoker.nebReadLightData(x, z, lightData, false);
-                            var worldChunk = world.getChunkManager().getWorldChunk(x, z, false);
-                            if (worldChunk != null) {
-                                invoker.nebScheduleRenderChunk(worldChunk, x, z);
-                                context.client().worldRenderer.scheduleNeighborUpdates(worldChunk.getPos());
-                            }
-                        });
+                        invoker.nebReadLightData(x, z, lightData);
+                        var worldChunk = world.getChunkManager().getWorldChunk(x, z, false);
+                        if (worldChunk != null) {
+                            invoker.nebScheduleRenderChunk(worldChunk, x, z);
+                            client.worldRenderer.scheduleTerrainUpdate();
+                        }
                     }
                 } catch (Exception e) {
                     LOGGER.error("Failed to apply cached chunk ({},{}) to world", x, z, e);
@@ -170,7 +176,8 @@ public class ModNetworking {
             LOGGER.debug("Cache hit for chunk ({},{})", payload.chunkX(), payload.chunkZ());
         });
 
-        ClientPlayNetworking.registerGlobalReceiver(StatRespondPayload.TYPE, (payload, context) -> {
+        ClientPlayNetworking.registerGlobalReceiver(StatRespondPayload.CHANNEL, (client, handler, buf, responseSender) -> {
+            var payload = StatRespondPayload.read(new PacketByteBuf(buf.copy()));
             SimpleStatManager.inboundBytesBakedServer = payload.inboundBytesBaked();
             SimpleStatManager.inboundBytesRawServer = payload.inboundBytesRaw();
             SimpleStatManager.outboundBytesBakedServer = payload.outboundBytesBaked();
@@ -186,5 +193,12 @@ public class ModNetworking {
             SimpleStatManager.chunkCacheMissesServer = payload.chunkCacheMisses();
             SimpleStatManager.chunkCacheSavedBytesServer = payload.chunkCacheSavedBytes();
         });
+    }
+
+    /**
+     * Helper to send a payload from server to a specific player.
+     */
+    public static void sendToPlayer(ServerPlayerEntity player, net.minecraft.util.Identifier channel, PacketByteBuf buf) {
+        ServerPlayNetworking.send(player, channel, buf);
     }
 }

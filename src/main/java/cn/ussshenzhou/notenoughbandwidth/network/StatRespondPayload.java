@@ -1,10 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
-import cn.ussshenzhou.notenoughbandwidth.ModConstants;
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.codec.PacketCodecs;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.util.Identifier;
 
 public record StatRespondPayload(
@@ -22,52 +18,42 @@ public record StatRespondPayload(
         long chunkCacheHits,
         long chunkCacheMisses,
         long chunkCacheSavedBytes
-) implements CustomPayload {
-    public static final Id<StatRespondPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "stat_resp"));
+) {
+    public static final Identifier CHANNEL = new Identifier("neb", "stat_resp");
 
-    public static final PacketCodec<ByteBuf, StatRespondPayload> CODEC = new PacketCodec<>() {
-        @Override
-        public StatRespondPayload decode(ByteBuf buf) {
-            return new StatRespondPayload(
-                    PacketCodecs.VAR_LONG.decode(buf),
-                    PacketCodecs.VAR_LONG.decode(buf),
-                    PacketCodecs.VAR_LONG.decode(buf),
-                    PacketCodecs.VAR_LONG.decode(buf),
-                    PacketCodecs.DOUBLE.decode(buf),
-                    PacketCodecs.DOUBLE.decode(buf),
-                    PacketCodecs.DOUBLE.decode(buf),
-                    PacketCodecs.DOUBLE.decode(buf),
-                    PacketCodecs.VAR_INT.decode(buf),
-                    PacketCodecs.VAR_INT.decode(buf),
-                    PacketCodecs.VAR_INT.decode(buf),
-                    PacketCodecs.VAR_LONG.decode(buf),
-                    PacketCodecs.VAR_LONG.decode(buf),
-                    PacketCodecs.VAR_LONG.decode(buf)
-            );
-        }
+    public void write(PacketByteBuf buf) {
+        buf.writeLong(inboundBytesBaked);
+        buf.writeLong(inboundBytesRaw);
+        buf.writeLong(outboundBytesBaked);
+        buf.writeLong(outboundBytesRaw);
+        buf.writeDouble(inboundSpeedBaked);
+        buf.writeDouble(inboundSpeedRaw);
+        buf.writeDouble(outboundSpeedBaked);
+        buf.writeDouble(outboundSpeedRaw);
+        buf.writeVarInt(dictSize);
+        buf.writeVarInt(dictSampleCount);
+        buf.writeVarInt(dictSampleThreshold);
+        buf.writeLong(chunkCacheHits);
+        buf.writeLong(chunkCacheMisses);
+        buf.writeLong(chunkCacheSavedBytes);
+    }
 
-        @Override
-        public void encode(ByteBuf buf, StatRespondPayload value) {
-            PacketCodecs.VAR_LONG.encode(buf, value.inboundBytesBaked);
-            PacketCodecs.VAR_LONG.encode(buf, value.inboundBytesRaw);
-            PacketCodecs.VAR_LONG.encode(buf, value.outboundBytesBaked);
-            PacketCodecs.VAR_LONG.encode(buf, value.outboundBytesRaw);
-            PacketCodecs.DOUBLE.encode(buf, value.inboundSpeedBaked);
-            PacketCodecs.DOUBLE.encode(buf, value.inboundSpeedRaw);
-            PacketCodecs.DOUBLE.encode(buf, value.outboundSpeedBaked);
-            PacketCodecs.DOUBLE.encode(buf, value.outboundSpeedRaw);
-            PacketCodecs.VAR_INT.encode(buf, value.dictSize);
-            PacketCodecs.VAR_INT.encode(buf, value.dictSampleCount);
-            PacketCodecs.VAR_INT.encode(buf, value.dictSampleThreshold);
-            PacketCodecs.VAR_LONG.encode(buf, value.chunkCacheHits);
-            PacketCodecs.VAR_LONG.encode(buf, value.chunkCacheMisses);
-            PacketCodecs.VAR_LONG.encode(buf, value.chunkCacheSavedBytes);
-        }
-    };
-
-    @Override
-    public Id<? extends CustomPayload> getId() {
-        return TYPE;
+    public static StatRespondPayload read(PacketByteBuf buf) {
+        return new StatRespondPayload(
+                buf.readLong(),
+                buf.readLong(),
+                buf.readLong(),
+                buf.readLong(),
+                buf.readDouble(),
+                buf.readDouble(),
+                buf.readDouble(),
+                buf.readDouble(),
+                buf.readVarInt(),
+                buf.readVarInt(),
+                buf.readVarInt(),
+                buf.readLong(),
+                buf.readLong(),
+                buf.readLong()
+        );
     }
 }
