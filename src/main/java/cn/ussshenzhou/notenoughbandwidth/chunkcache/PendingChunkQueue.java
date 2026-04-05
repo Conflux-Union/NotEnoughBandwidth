@@ -31,7 +31,11 @@ public class PendingChunkQueue {
     private static final ConcurrentHashMap<ClientConnection, List<Entry>> QUEUES = new ConcurrentHashMap<>();
 
     public static void enqueue(ClientConnection conn, ServerPlayerEntity player, ChunkDataS2CPacket packet) {
-        QUEUES.computeIfAbsent(conn, k -> new ArrayList<>()).add(new Entry(player, packet));
+        QUEUES.compute(conn, (k, list) -> {
+            if (list == null) list = new ArrayList<>();
+            list.add(new Entry(player, packet));
+            return list;
+        });
     }
 
     /**

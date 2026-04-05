@@ -79,7 +79,8 @@ public final class ChunkHashUtil {
         }
 
         long hash = hasher.hash().asLong();
-        int totalBytes = sectionsBytes + 8;
+        // Sections dominate packet size; heightmap/BE overhead is minor.
+        int totalBytes = sectionsBytes;
 
         if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
             LOGGER.info("[{}] ChunkHash: hash={} sections={}B entities={}", side,

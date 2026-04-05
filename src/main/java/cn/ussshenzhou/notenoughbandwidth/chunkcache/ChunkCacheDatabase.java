@@ -17,19 +17,23 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
 /**
  * LevelDB-backed persistent store for chunk data, keyed by 64-bit content hash.
  * One database per server address, stored under {gameDir}/neb_cache/{serverHash}/.
+ *
+ * Value format: [8-byte timestamp (millis)][Zstd-compressed chunk data]
  */
 public class ChunkCacheDatabase implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-ChunkCacheDB");
 
     // Bump this when the on-disk format changes to invalidate old caches automatically.
-    private static final int FORMAT_VERSION = 3;
+    private static final int FORMAT_VERSION = 4;
     private static final byte[] VERSION_KEY = "NEB_FORMAT_VERSION".getBytes(StandardCharsets.UTF_8);
+    private static final int TIMESTAMP_BYTES = 8;
 
     private final DB db;
     private final Path dbDir;
@@ -77,7 +81,10 @@ public class ChunkCacheDatabase implements AutoCloseable {
 
     public void put(long hash, byte[] data) {
         byte[] compressed = Zstd.compress(data, 6);
-        db.put(longToBytes(hash), compressed);
+        byte[] value = new byte[TIMESTAMP_BYTES + compressed.length];
+        ByteBuffer.wrap(value).putLong(System.currentTimeMillis());
+        System.arraycopy(compressed, 0, value, TIMESTAMP_BYTES, compressed.length);
+        db.put(longToBytes(hash), value);
     }
 
     public void delete(long hash) {
@@ -86,8 +93,15 @@ public class ChunkCacheDatabase implements AutoCloseable {
 
     @Nullable
     public byte[] get(long hash) {
-        byte[] compressed = db.get(longToBytes(hash));
-        if (compressed == null) return null;
+        byte[] value = db.get(longToBytes(hash));
+        if (value == null) return null;
+        if (value.length <= TIMESTAMP_BYTES) {
+            LOGGER.warn("Corrupt entry for hash {}: value too short", hash);
+            db.delete(longToBytes(hash));
+            return null;
+        }
+        byte[] compressed = new byte[value.length - TIMESTAMP_BYTES];
+        System.arraycopy(value, TIMESTAMP_BYTES, compressed, 0, compressed.length);
         long originalSize = Zstd.decompressedSize(compressed);
         if (originalSize < 0 || originalSize > 64 * 1024 * 1024) {
             LOGGER.warn("Invalid decompressed size {} for hash {}, dropping entry", originalSize, hash);
@@ -134,60 +148,57 @@ public class ChunkCacheDatabase implements AutoCloseable {
     }
 
     /**
-     * Deletes entries (in key-iteration order) until the DB is at 70% of max capacity.
-     * Estimates average entry size by sampling the first few values — avoids dividing the
-     * raw filesystem size (which includes LevelDB metadata) by entry count, which would
-     * systematically over-estimate and delete too many entries.
+     * Deletes the oldest entries (by stored timestamp) until the DB is at 70%
+     * of max capacity. Uses a discount factor on the filesystem size to account
+     * for LevelDB metadata overhead (SST indices, bloom filters, MANIFEST, WAL).
      *
      * @return true if any entries were deleted
      */
     public boolean evictIfNeeded() {
         if (maxSizeBytes <= 0) return false;
-        long currentSize = approximateSize();
-        if (currentSize <= maxSizeBytes) return false;
+        long rawSize = approximateSize();
+        // LevelDB metadata is typically 15-25% of on-disk size; discount it
+        // so we don't over-evict based on inflated filesystem measurements.
+        long effectiveSize = (long) (rawSize * 0.8);
+        if (effectiveSize <= maxSizeBytes) return false;
 
         long targetSize = (long) (maxSizeBytes * 0.7);
-        long bytesToFree = currentSize - targetSize;
+        long bytesToFree = effectiveSize - targetSize;
 
-        // Sample the first few values to get a realistic average entry size.
-        // Chunk values are typically 10-20 KB each; sampling 10 is cheap and accurate.
-        long sampledBytes = 0;
-        int sampledCount = 0;
+        // Scan all entries to collect (key, timestamp, valueSize) for time-ordered eviction.
+        record EntryMeta(byte[] key, long timestamp, int valueSize) {}
+        List<EntryMeta> entries = new ArrayList<>();
         try (DBIterator it = db.iterator()) {
-            for (it.seekToFirst(); it.hasNext() && sampledCount < 10; it.next(), sampledCount++) {
-                byte[] v = it.peekNext().getValue();
-                sampledBytes += (v != null ? v.length : 0) + 8; // 8 bytes per key
-            }
-        } catch (IOException e) {
-            LOGGER.error("Failed to sample entries for eviction", e);
-            return false;
-        }
-        if (sampledCount == 0) return false;
-
-        long avgEntrySize = sampledBytes / sampledCount;
-        long entriesToDelete = avgEntrySize > 0 ? (bytesToFree / avgEntrySize) + 1 : sampledCount;
-
-        // Collect keys first — do not delete while iterating.
-        // Skip VERSION_KEY (non-8-byte keys) to avoid wiping the format version marker.
-        List<byte[]> keysToDelete = new ArrayList<>((int) entriesToDelete);
-        try (DBIterator it = db.iterator()) {
-            for (it.seekToFirst(); it.hasNext() && keysToDelete.size() < entriesToDelete; it.next()) {
+            for (it.seekToFirst(); it.hasNext(); it.next()) {
                 byte[] key = it.peekNext().getKey();
-                if (key.length == 8) keysToDelete.add(key);
+                if (key.length != 8) continue;
+                byte[] value = it.peekNext().getValue();
+                long ts = (value != null && value.length >= TIMESTAMP_BYTES)
+                        ? ByteBuffer.wrap(value, 0, TIMESTAMP_BYTES).getLong() : 0L;
+                int size = (value != null ? value.length : 0) + 8;
+                entries.add(new EntryMeta(key, ts, size));
             }
         } catch (IOException e) {
-            LOGGER.error("Failed to collect keys for eviction", e);
+            LOGGER.error("Failed to scan entries for eviction", e);
             return false;
         }
 
-        for (byte[] key : keysToDelete) {
-            db.delete(key);
+        // Sort oldest first.
+        entries.sort(Comparator.comparingLong(EntryMeta::timestamp));
+
+        long freed = 0;
+        int deleted = 0;
+        for (EntryMeta entry : entries) {
+            if (freed >= bytesToFree) break;
+            db.delete(entry.key);
+            freed += entry.valueSize;
+            deleted++;
         }
 
         try { db.compactRange(null, null); } catch (Exception ignored) {}
-        LOGGER.info("Evicted {} entries from chunk cache (was {} MB, target {} MB)",
-                keysToDelete.size(), currentSize / 1024 / 1024, targetSize / 1024 / 1024);
-        return !keysToDelete.isEmpty();
+        LOGGER.info("Evicted {} entries from chunk cache (disk {} MB, effective {} MB, target {} MB)",
+                deleted, rawSize / 1024 / 1024, effectiveSize / 1024 / 1024, targetSize / 1024 / 1024);
+        return deleted > 0;
     }
 
     public long getMaxSizeBytes() {

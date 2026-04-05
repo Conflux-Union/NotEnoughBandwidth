@@ -8,6 +8,8 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
@@ -21,6 +23,7 @@ import java.util.concurrent.Executors;
 
 @Mixin(ClientPlayNetworkHandler.class)
 public class ClientChunkCacheMixin {
+    private static final Logger LOGGER = LoggerFactory.getLogger("NEB-ChunkCacheWriter");
 
     private static final ExecutorService CACHE_WRITER = Executors.newSingleThreadExecutor(
             new ThreadFactoryBuilder().setNameFormat("NEB-ChunkCacheWriter").setDaemon(true).build());
@@ -54,15 +57,16 @@ public class ClientChunkCacheMixin {
 
             if (ChunkCacheManager.drainAndShouldResend()) {
                 ChunkCacheManager.evictAndRebuildIfNeeded();
-                byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
-                if (bloomBytes != null) {
-                    MinecraftClient.getInstance().execute(() -> {
-                        try {
+                MinecraftClient.getInstance().execute(() -> {
+                    try {
+                        byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
+                        if (bloomBytes != null) {
                             IndexSyncHandler.sendChunkedManifest(bloomBytes);
-                        } catch (Exception ignored) {
                         }
-                    });
-                }
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to resend chunk cache manifest", e);
+                    }
+                });
             }
         });
     }

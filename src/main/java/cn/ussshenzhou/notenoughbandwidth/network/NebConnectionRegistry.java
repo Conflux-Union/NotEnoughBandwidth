@@ -78,6 +78,8 @@ public class NebConnectionRegistry {
 
     /** Connection should intercept and buffer packets (pending OR enabled). */
     public static boolean isActive(ClientConnection connection) {
-        return ENABLED.contains(connection) || PENDING.contains(connection);
+        synchronized (PENDING) {
+            return ENABLED.contains(connection) || PENDING.contains(connection);
+        }
     }
 }
