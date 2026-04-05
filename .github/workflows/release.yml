@@ -7,29 +7,34 @@ jobs:
   check:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.build_matrix.outputs.matrix }}
-      has_releases: ${{ steps.build_matrix.outputs.has_releases }}
+      matrix: ${{ steps.scan.outputs.matrix }}
+      has_releases: ${{ steps.scan.outputs.has_releases }}
+      date_tag: ${{ steps.scan.outputs.date_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Find branches needing release
-        id: build_matrix
+      - name: Scan branches
+        id: scan
         run: |
+          DATE_TAG="release-$(date +%Y.%m.%d)"
+          echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
+
           includes=()
           for branch in $(git branch -r | grep -E '^\s*origin/[0-9]' | sed 's|.*origin/||'); do
             MOD_VERSION=$(git show "origin/${branch}:gradle.properties" 2>/dev/null | grep '^mod_version=' | cut -d'=' -f2)
             MC_VERSION=$(git show "origin/${branch}:gradle.properties" 2>/dev/null | grep '^minecraft_version=' | cut -d'=' -f2)
             [ -z "$MOD_VERSION" ] && continue
             if ! git rev-parse "v$MOD_VERSION" >/dev/null 2>&1; then
-              echo "Branch $branch: v$MOD_VERSION not tagged, queuing for release."
+              echo "  queued: $branch (v$MOD_VERSION)"
               includes+=("{\"branch\":\"$branch\",\"mod_version\":\"$MOD_VERSION\",\"mc_version\":\"$MC_VERSION\"}")
             else
-              echo "Branch $branch: v$MOD_VERSION already tagged, skipping."
+              echo "  skipped: $branch (v$MOD_VERSION already tagged)"
             fi
           done
+
           if [ ${#includes[@]} -eq 0 ]; then
             echo "No branches need releasing."
             echo "has_releases=false" >> $GITHUB_OUTPUT
@@ -39,16 +44,13 @@ jobs:
             echo "has_releases=true" >> $GITHUB_OUTPUT
           fi
 
-  release:
+  build:
     needs: check
     if: needs.check.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     strategy:
       matrix: ${{ fromJson(needs.check.outputs.matrix) }}
       fail-fast: false
-
     steps:
       - name: Checkout ${{ matrix.branch }}
         uses: actions/checkout@v4
@@ -66,51 +68,73 @@ jobs:
       - name: Build
         run: ./gradlew build --no-daemon
 
-      - name: Locate jar
-        id: jar
+      - name: Collect jar and changelog
         run: |
           JAR=$(ls build/libs/*.jar | grep -v sources | grep -v javadoc | head -1)
-          echo "path=$JAR" >> $GITHUB_OUTPUT
+          mkdir -p /tmp/artifacts
 
-      - name: Generate changelog
-        id: changelog
-        run: |
+          cp "$JAR" /tmp/artifacts/
+
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -z "$LAST_TAG" ]; then
-            RANGE="HEAD"
-            HEADER="Full changelog (initial release):"
-          else
-            RANGE="${LAST_TAG}..HEAD"
-            HEADER="Changes since ${LAST_TAG}:"
-          fi
-
-          COMMITS=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges)
-
-          EOF_MARKER=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64 | tr -d '/+=')
           {
-            echo "body<<$EOF_MARKER"
-            echo "## Not Enough Bandwidth ${{ matrix.mod_version }}"
+            echo "### Minecraft ${{ matrix.mc_version }} (mod ${{ matrix.mod_version }})"
+            if [ -z "$LAST_TAG" ]; then
+              git log HEAD --pretty=format:"- %s (%h)" --no-merges
+            else
+              git log "${LAST_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
+            fi
             echo ""
-            echo "Minecraft: **${{ matrix.mc_version }}** | Fabric Loader >= 0.18.0 | Fabric API required"
-            echo ""
-            echo "### $HEADER"
-            echo "$COMMITS"
-            echo "$EOF_MARKER"
-          } >> $GITHUB_OUTPUT
+          } > /tmp/artifacts/changelog-${{ matrix.branch }}.md
 
-      - name: Create tag
+      - name: Tag branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v${{ matrix.mod_version }}"
           git push origin "v${{ matrix.mod_version }}"
 
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.branch }}
+          path: /tmp/artifacts/
+
+  publish:
+    needs: [check, build]
+    if: needs.check.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-*
+          path: /tmp/artifacts
+          merge-multiple: true
+
+      - name: Assemble release body
+        id: body
+        run: |
+          EOF_MARKER=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64 | tr -d '/+=')
+          {
+            echo "body<<$EOF_MARKER"
+            echo "## Not Enough Bandwidth"
+            echo ""
+            echo "Fabric Loader >= 0.18.0 | Fabric API required"
+            echo ""
+            for f in $(ls /tmp/artifacts/changelog-*.md 2>/dev/null | sort); do
+              cat "$f"
+            done
+            echo "$EOF_MARKER"
+          } >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ matrix.mod_version }}
-          name: Not Enough Bandwidth ${{ matrix.mod_version }}
-          body: ${{ steps.changelog.outputs.body }}
-          files: ${{ steps.jar.outputs.path }}
+          tag_name: ${{ needs.check.outputs.date_tag }}
+          name: Not Enough Bandwidth ${{ needs.check.outputs.date_tag }}
+          body: ${{ steps.body.outputs.body }}
+          files: /tmp/artifacts/*.jar
           draft: false
-          prerelease: ${{ contains(matrix.mod_version, 'alpha') || contains(matrix.mod_version, 'beta') || contains(matrix.mod_version, 'rc') }}
+          prerelease: false
