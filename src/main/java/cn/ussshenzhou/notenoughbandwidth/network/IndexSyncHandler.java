@@ -106,16 +106,24 @@ public class IndexSyncHandler {
                     : payload.serverId();
             ChunkCacheManager.onClientConnect(cacheKey);
 
-            PacketByteBuf ackBuf = PacketByteBufs.create();
-            new NebAckPayload().write(ackBuf);
-            ClientPlayNetworking.send(NebAckPayload.CHANNEL, ackBuf);
-            byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
-            if (bloomBytes != null && bloomBytes.length > 0) {
-                PacketByteBuf manifestBuf = PacketByteBufs.create();
-                new ChunkCacheManifestPayload(bloomBytes).write(manifestBuf);
-                ClientPlayNetworking.send(ChunkCacheManifestPayload.CHANNEL, manifestBuf);
-                LOGGER.info("Sent chunk cache manifest ({} bytes)", bloomBytes.length);
-            }
+            // Must send on the client thread — Fabric 1.20.1 rejects sends from
+            // the Netty IO thread during early PLAY phase.
+            client.execute(() -> {
+                try {
+                    PacketByteBuf ackBuf = PacketByteBufs.create();
+                    new NebAckPayload().write(ackBuf);
+                    ClientPlayNetworking.send(NebAckPayload.CHANNEL, ackBuf);
+                    byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
+                    if (bloomBytes != null && bloomBytes.length > 0) {
+                        PacketByteBuf manifestBuf = PacketByteBufs.create();
+                        new ChunkCacheManifestPayload(bloomBytes).write(manifestBuf);
+                        ClientPlayNetworking.send(ChunkCacheManifestPayload.CHANNEL, manifestBuf);
+                        LOGGER.info("Sent chunk cache manifest ({} bytes)", bloomBytes.length);
+                    }
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to send NEB ack/manifest", e);
+                }
+            });
         });
     }
 
