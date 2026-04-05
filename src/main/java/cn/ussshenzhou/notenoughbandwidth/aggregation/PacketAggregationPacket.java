@@ -9,7 +9,6 @@ import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.network.PacketByteBuf;
@@ -132,7 +131,7 @@ public class PacketAggregationPacket {
         SimpleStatManager.inRaw(raw.readableBytes());
 
         var decoder = DefaultChannelPipelineHelper.getPacketDecoder(
-                (DefaultChannelPipeline) conn.channel.pipeline());
+                conn.channel.pipeline());
         if (decoder == null) {
             LOGGER.error("Failed to get DecoderHandler for inbound protocol");
             data.release();

@@ -5,7 +5,6 @@ import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.network.PacketByteBuf;
@@ -130,7 +129,7 @@ public class AggregationManager {
                 return;
             }
             var encoder = DefaultChannelPipelineHelper.getPacketEncoder(
-                    (DefaultChannelPipeline) connection.channel.pipeline());
+                    connection.channel.pipeline());
             if (encoder == null) {
                 LOGGER.error("Failed to get PacketEncoder of connection {} {}.",
                         connection.getSide(), connection.getAddress());
