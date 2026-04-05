@@ -11,6 +11,7 @@ import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import io.netty.buffer.ByteBufAllocator;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkSide;
+import net.minecraft.network.OffThreadException;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.util.Identifier;
@@ -167,6 +168,8 @@ public class PacketAggregationPacket {
                         ((Packet) decoded).apply(listener);
                     }
                 }
+            } catch (OffThreadException e) {
+                // Expected: packet has been scheduled on the main thread by forceMainThread()
             } catch (Exception e) {
                 LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
             } finally {

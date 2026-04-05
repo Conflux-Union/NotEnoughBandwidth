@@ -3,11 +3,10 @@ package cn.ussshenzhou.notenoughbandwidth.mixin;
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkHashUtil;
-import cn.ussshenzhou.notenoughbandwidth.network.ChunkCacheManifestPayload;
+import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncHandler;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.PacketByteBuf;
@@ -59,9 +58,7 @@ public class ClientChunkCacheMixin {
                 if (bloomBytes != null) {
                     MinecraftClient.getInstance().execute(() -> {
                         try {
-                            PacketByteBuf sendBuf = PacketByteBufs.create();
-                            new ChunkCacheManifestPayload(bloomBytes).write(sendBuf);
-                            ClientPlayNetworking.send(ChunkCacheManifestPayload.CHANNEL, sendBuf);
+                            IndexSyncHandler.sendChunkedManifest(bloomBytes);
                         } catch (Exception ignored) {
                         }
                     });

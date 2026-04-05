@@ -10,6 +10,7 @@ import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.network.ClientConnection;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.packet.s2c.play.ChunkData;
 import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
@@ -20,10 +21,14 @@ import net.minecraft.util.math.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
+import java.util.concurrent.ConcurrentHashMap;
+
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.LOCAL;
 
 public class ModNetworking {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Network");
+    private static final ConcurrentHashMap<ClientConnection, ByteArrayOutputStream> MANIFEST_CHUNKS = new ConcurrentHashMap<>();
 
     public static void registerCommon() {
         // Track all channels for index sync
@@ -50,14 +55,21 @@ public class ModNetworking {
                     player.getName().getString());
         });
 
-        // Client uploads its bloom filter; store it for chunk-send optimization.
+        // Client uploads its bloom filter in chunks; accumulate and apply when complete.
         ServerPlayNetworking.registerGlobalReceiver(ChunkCacheManifestPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
             var payload = ChunkCacheManifestPayload.read(new PacketByteBuf(buf.copy()));
             var connection = handler.connection;
-            if (payload.bloomFilterBytes() != null && payload.bloomFilterBytes().length > 0) {
-                ChunkCacheManager.setServerBloomFilter(connection, payload.bloomFilterBytes());
+            if (payload.bloomFilterBytes() == null || payload.bloomFilterBytes().length == 0) {
+                return;
+            }
+            var accumulator = MANIFEST_CHUNKS.computeIfAbsent(connection, k -> new ByteArrayOutputStream());
+            accumulator.write(payload.bloomFilterBytes(), 0, payload.bloomFilterBytes().length);
+            if (!payload.hasMore()) {
+                byte[] fullBloom = accumulator.toByteArray();
+                MANIFEST_CHUNKS.remove(connection);
+                ChunkCacheManager.setServerBloomFilter(connection, fullBloom);
                 LOGGER.info("Received chunk cache manifest from {} ({} bytes)",
-                        player.getName().getString(), payload.bloomFilterBytes().length);
+                        player.getName().getString(), fullBloom.length);
             }
         });
 
@@ -200,5 +212,9 @@ public class ModNetworking {
      */
     public static void sendToPlayer(ServerPlayerEntity player, net.minecraft.util.Identifier channel, PacketByteBuf buf) {
         ServerPlayNetworking.send(player, channel, buf);
+    }
+
+    public static void clearManifestChunks(ClientConnection connection) {
+        MANIFEST_CHUNKS.remove(connection);
     }
 }

@@ -61,10 +61,14 @@ public abstract class ConnectionMixin {
         if (!NebConnectionRegistry.isEnabled((ClientConnection) (Object) this)) {
             return;
         }
-        if (PacketAggregationPacket.CHANNEL.equals(PacketUtil.getTrueType(packet))) {
+        var trueType = PacketUtil.getTrueType(packet);
+        if (trueType == null) {
             return;
         }
-        if (callbacks != null || NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {
+        if (PacketAggregationPacket.CHANNEL.equals(trueType)) {
+            return;
+        }
+        if (callbacks != null || NotEnoughBandwidthConfig.skipType(trueType.toString())) {
             AggregationManager.flushConnectionSync((ClientConnection) (Object) this);
             return;
         }

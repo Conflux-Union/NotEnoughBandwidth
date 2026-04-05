@@ -50,6 +50,7 @@ public class IndexSyncHandler {
             var connection = handler.connection;
             ChunkCacheManager.removeServerBloomFilter(connection);
             AggregationManager.discardConnection(connection);
+            ModNetworking.clearManifestChunks(connection);
         });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -115,9 +116,7 @@ public class IndexSyncHandler {
                     ClientPlayNetworking.send(NebAckPayload.CHANNEL, ackBuf);
                     byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
                     if (bloomBytes != null && bloomBytes.length > 0) {
-                        PacketByteBuf manifestBuf = PacketByteBufs.create();
-                        new ChunkCacheManifestPayload(bloomBytes).write(manifestBuf);
-                        ClientPlayNetworking.send(ChunkCacheManifestPayload.CHANNEL, manifestBuf);
+                        sendChunkedManifest(bloomBytes);
                         LOGGER.info("Sent chunk cache manifest ({} bytes)", bloomBytes.length);
                     }
                 } catch (Exception e) {
@@ -125,6 +124,25 @@ public class IndexSyncHandler {
                 }
             });
         });
+    }
+
+    /**
+     * Sends a bloom filter to the server, splitting into chunks that fit in
+     * the 1.20.1 C2S custom payload size limit (32 767 bytes).
+     */
+    public static void sendChunkedManifest(byte[] bloomBytes) {
+        int offset = 0;
+        while (offset < bloomBytes.length) {
+            int remaining = bloomBytes.length - offset;
+            int chunkSize = Math.min(remaining, ChunkCacheManifestPayload.MAX_CHUNK_SIZE);
+            boolean hasMore = offset + chunkSize < bloomBytes.length;
+            byte[] chunk = new byte[chunkSize];
+            System.arraycopy(bloomBytes, offset, chunk, 0, chunkSize);
+            PacketByteBuf buf = PacketByteBufs.create();
+            new ChunkCacheManifestPayload(chunk, hasMore).write(buf);
+            ClientPlayNetworking.send(ChunkCacheManifestPayload.CHANNEL, buf);
+            offset += chunkSize;
+        }
     }
 
     private static List<Identifier> collectRegisteredTypes() {

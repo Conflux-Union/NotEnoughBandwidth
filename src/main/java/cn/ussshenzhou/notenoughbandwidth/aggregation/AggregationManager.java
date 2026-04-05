@@ -118,6 +118,9 @@ public class AggregationManager {
                 && listener.getClass().getName().equals("net.minecraft.client.network.ClientPlayNetworkHandler");
     }
 
+    private static final int MAX_C2S_PAYLOAD = 32767;
+    private static final int MAX_S2C_PAYLOAD = 1048576;
+
     private static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
         try {
             if (packets == null || packets.isEmpty()) {
@@ -139,19 +142,34 @@ public class AggregationManager {
             NetworkSide encoderSide = encoder.side;
             var sendPackets = new ArrayList<>(packets);
             packets.clear();
-            var aggregationPayload = new PacketAggregationPacket(
-                    sendPackets, encoderSide, connection);
 
-            PacketByteBuf buf = new PacketByteBuf(ByteBufAllocator.DEFAULT.buffer());
-            aggregationPayload.write(buf);
+            int maxPayload = encoderSide == NetworkSide.CLIENTBOUND ? MAX_S2C_PAYLOAD : MAX_C2S_PAYLOAD;
+            sendBatched(connection, sendPackets, encoderSide, maxPayload);
+        } catch (Exception e) {
+            LOGGER.error("Skipped: Failed to flush packets.", e);
+        }
+    }
 
+    private static void sendBatched(ClientConnection connection,
+                                     ArrayList<AggregatedEncodePacket> batch,
+                                     NetworkSide encoderSide, int maxPayload) {
+        if (batch.isEmpty()) return;
+
+        var aggregationPayload = new PacketAggregationPacket(batch, encoderSide, connection);
+        PacketByteBuf buf = new PacketByteBuf(ByteBufAllocator.DEFAULT.buffer());
+        aggregationPayload.write(buf);
+
+        if (buf.readableBytes() <= maxPayload || batch.size() == 1) {
             Packet<?> wrapper = encoderSide == NetworkSide.CLIENTBOUND
                     ? new CustomPayloadS2CPacket(PacketAggregationPacket.CHANNEL, buf)
                     : new CustomPayloadC2SPacket(PacketAggregationPacket.CHANNEL, buf);
             connection.send(wrapper);
             connection.channel.flush();
-        } catch (Exception e) {
-            LOGGER.error("Skipped: Failed to flush packets.", e);
+        } else {
+            buf.release();
+            int mid = batch.size() / 2;
+            sendBatched(connection, new ArrayList<>(batch.subList(0, mid)), encoderSide, maxPayload);
+            sendBatched(connection, new ArrayList<>(batch.subList(mid, batch.size())), encoderSide, maxPayload);
         }
     }
 }

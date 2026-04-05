@@ -48,17 +48,13 @@ public class AggregatedDecodePacket {
     }
 
     private Packet<?> decodeCustom(NetworkSide side) {
-        PacketByteBuf pBuf = new PacketByteBuf(data);
-        try {
-            if (side == NetworkSide.CLIENTBOUND) {
-                return new CustomPayloadS2CPacket(type, pBuf);
-            } else {
-                return new CustomPayloadC2SPacket(type, pBuf);
-            }
-        } catch (Exception e) {
-            LOGGER.error("Skipped: Failed to decode custom payload {}", type, e);
-            return null;
+        if (side == NetworkSide.CLIENTBOUND) {
+            return new CustomPayloadS2CPacket(type, new PacketByteBuf(data));
         }
+        // CustomPayloadC2SPacket.apply() releases data after onCustomPayload() returns.
+        // Retain once so the caller's finally block can safely release as well.
+        data.retain();
+        return new CustomPayloadC2SPacket(type, new PacketByteBuf(data));
     }
 
     public Identifier getType() {
