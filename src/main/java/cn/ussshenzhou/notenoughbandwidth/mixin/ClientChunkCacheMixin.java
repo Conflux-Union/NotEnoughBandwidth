@@ -16,11 +16,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Mixin(ClientPlayNetworkHandler.class)
 public class ClientChunkCacheMixin {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("NEB-ChunkCacheWriter");
 
     // Off-thread executor so DB writes don't stall the client netty thread.
     private static final ExecutorService CACHE_WRITER = Executors.newSingleThreadExecutor(
@@ -70,16 +75,16 @@ public class ClientChunkCacheMixin {
             // Files.walk + LevelDB compaction don't block the main synchronized operations.
             if (ChunkCacheManager.drainAndShouldResend()) {
                 ChunkCacheManager.evictAndRebuildIfNeeded();
-                byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
-                if (bloomBytes != null) {
-                    MinecraftClient.getInstance().execute(() -> {
+                MinecraftClient.getInstance().execute(() -> {
+                    byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
+                    if (bloomBytes != null) {
                         try {
                             ClientPlayNetworking.send(new ChunkCacheManifestPayload(bloomBytes));
-                        } catch (Exception ignored) {
-                            // Not connected or NEB not active — silently skip.
+                        } catch (Exception e) {
+                            LOGGER.warn("Failed to resend chunk cache manifest", e);
                         }
-                    });
-                }
+                    }
+                });
             }
         });
     }
