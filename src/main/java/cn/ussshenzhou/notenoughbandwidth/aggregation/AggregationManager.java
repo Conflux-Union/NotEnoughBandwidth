@@ -13,7 +13,7 @@ import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.c2s.play.CustomPayloadC2SPacket;
 import net.minecraft.network.packet.s2c.play.CustomPayloadS2CPacket;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
+
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -113,8 +113,10 @@ public class AggregationManager {
 
     private static boolean isPlayPhase(ClientConnection connection) {
         var listener = connection.getPacketListener();
-        return listener instanceof ServerPlayNetworkHandler
-                || listener instanceof ClientPlayNetworkHandler;
+        if (listener instanceof ServerPlayNetworkHandler) return true;
+        // Avoid loading client-only class on dedicated server
+        return listener != null
+                && listener.getClass().getName().equals("net.minecraft.client.network.ClientPlayNetworkHandler");
     }
 
     private static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {

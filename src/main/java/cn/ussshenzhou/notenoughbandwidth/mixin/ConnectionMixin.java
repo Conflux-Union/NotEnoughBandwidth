@@ -7,7 +7,6 @@ import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import io.netty.channel.local.LocalAddress;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.PacketCallbacks;
 import net.minecraft.network.listener.PacketListener;
@@ -17,6 +16,7 @@ import net.minecraft.server.network.ServerPlayNetworkHandler;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -36,6 +36,17 @@ public abstract class ConnectionMixin {
     @Shadow
     public abstract SocketAddress getAddress();
 
+    /**
+     * Check if the listener is in PLAY phase without loading client-only classes on the server.
+     * ServerPlayNetworkHandler is safe to reference on both sides; the client handler
+     * is checked by class name to avoid a server-side class-loading crash.
+     */
+    @Unique
+    private static boolean isPlayPhase(PacketListener listener) {
+        if (listener instanceof ServerPlayNetworkHandler) return true;
+        return listener.getClass().getName().equals("net.minecraft.client.network.ClientPlayNetworkHandler");
+    }
+
     @Inject(method = "send(Lnet/minecraft/network/packet/Packet;Lnet/minecraft/network/PacketCallbacks;)V",
             at = @At("HEAD"), cancellable = true)
     private void nebPacketAggregate(Packet<?> packet, @Nullable PacketCallbacks callbacks,
@@ -43,7 +54,7 @@ public abstract class ConnectionMixin {
         var listener = this.packetListener;
         if (this.getAddress() instanceof LocalAddress
                 || listener == null
-                || !(listener instanceof ServerPlayNetworkHandler || listener instanceof ClientPlayNetworkHandler)
+                || !isPlayPhase(listener)
                 || !NamespaceIndexManager.ready()) {
             return;
         }
