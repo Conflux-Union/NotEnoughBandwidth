@@ -115,7 +115,7 @@ public class StatScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, width, height, 0x80000000);
+        super.render(context, mouseX, mouseY, delta);
         var tr = this.textRenderer;
         context.drawTextWithShadow(tr, client, 10, 10, 0xFFFFFF);
         context.drawTextWithShadow(tr, actual, 10, 30, 0xFFFFFF);
@@ -133,8 +133,6 @@ public class StatScreen extends Screen {
 
         context.drawTextWithShadow(tr, dictStatus, 10, 230, 0xFFFFFF);
         context.drawTextWithShadow(tr, chunkCacheStatus, 10, 250, 0xFFFFFF);
-
-        super.render(context, mouseX, mouseY, delta);
     }
 
     private String getReadableSpeed(int bytes) {
