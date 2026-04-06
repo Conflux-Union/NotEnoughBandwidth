@@ -52,12 +52,16 @@ public abstract class ConnectionMixin {
             return;
         }
         // Never aggregate the aggregation wrapper itself — would cause recursive nesting.
-        if (PacketAggregationPacket.TYPE.id().equals(PacketUtil.getTrueType(packet))) {
+        var trueType = PacketUtil.getTrueType(packet);
+        if (trueType == null) {
+            return;
+        }
+        if (PacketAggregationPacket.TYPE.id().equals(trueType)) {
             return;
         }
         // Packets with callbacks (disconnect, resource pack ack, etc.) must go through
         // the vanilla path so callbacks fire correctly. Flush first to preserve ordering.
-        if (callbacks != null || NotEnoughBandwidthConfig.skipType(PacketUtil.getTrueType(packet).toString())) {
+        if (callbacks != null || NotEnoughBandwidthConfig.skipType(trueType.toString())) {
             AggregationManager.flushConnectionSync((ClientConnection) (Object) this);
             return;
         }

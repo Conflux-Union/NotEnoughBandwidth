@@ -1,6 +1,10 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
+import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
+import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
+import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.ClientConnection;
+import net.minecraft.network.handler.PacketCodecDispatcher;
 
 import java.util.Collections;
 import java.util.Set;
@@ -20,6 +24,18 @@ public class NebConnectionRegistry {
 
     public static void markEnabled(ClientConnection connection) {
         ENABLED.add(connection);
+        // Extract the vanilla packet ID getter from the PLAY-phase codec
+        // so PacketUtil.getTrueType() can identify vanilla packets.
+        try {
+            var encoder = DefaultChannelPipelineHelper.getPacketEncoder(
+                    (DefaultChannelPipeline) connection.channel.pipeline());
+            if (encoder != null) {
+                var codec = (PacketCodecDispatcher) encoder.state.codec();
+                PacketUtil.initPacketIdGetter(codec);
+            }
+        } catch (Exception ignored) {
+            // Best-effort — will retry on next connection
+        }
     }
 
     public static void markDisabled(ClientConnection connection) {

@@ -155,11 +155,10 @@ public class ModNetworking {
                     var world = context.client().world;
                     if (world != null) {
                         world.enqueueChunkUpdate(() -> {
-                            invoker.nebReadLightData(x, z, lightData, false);
+                            invoker.nebReadLightData(x, z, lightData);
                             var worldChunk = world.getChunkManager().getWorldChunk(x, z, false);
                             if (worldChunk != null) {
                                 invoker.nebScheduleRenderChunk(worldChunk, x, z);
-                                context.client().worldRenderer.scheduleNeighborUpdates(worldChunk.getPos());
                             }
                         });
                     }
