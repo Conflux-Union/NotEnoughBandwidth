@@ -53,6 +53,7 @@ public class PacketAggregationPacket implements CustomPayload {
     }
 
     public void write(RegistryByteBuf buffer) {
+        var cfg = NotEnoughBandwidthConfig.get();
         var rawBuf = new RegistryByteBuf(ByteBufAllocator.DEFAULT.buffer(), buffer.getRegistryManager());
         try {
             packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
@@ -63,23 +64,41 @@ public class PacketAggregationPacket implements CustomPayload {
                 rawBuf.getBytes(rawBuf.readerIndex(), sample);
                 DictionaryManager.collectSample(sample);
             }
-            boolean compress = rawSize >= 32;
-            buffer.writeBoolean(compress);
-            if (compress) {
-                buffer.writeVarInt(rawSize);
+            boolean shouldTryCompress = rawSize >= cfg.getMinCompressionBytes();
+            if (shouldTryCompress) {
                 var compressedBuf = new PacketByteBuf(ZstdHelper.compress(connection, rawBuf));
                 try {
-                    if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
-                        LOGGER.debug("Aggregated and compressed: {} -> {} bytes ({} %)",
-                                rawSize, compressedBuf.readableBytes(),
-                                String.format("%.2f", 100f * compressedBuf.readableBytes() / rawSize));
+                    int compressedSize = compressedBuf.readableBytes();
+                    int minSavingsBytes = cfg.getMinCompressionSavingsBytes();
+                    int minSavingsPercent = cfg.getMinCompressionSavingsPercent();
+                    int savedBytes = rawSize - compressedSize;
+                    boolean enoughByteSavings = savedBytes >= minSavingsBytes;
+                    boolean enoughPercentSavings =
+                            compressedSize * 100L <= rawSize * (100L - minSavingsPercent);
+                    boolean useCompressed = enoughByteSavings && enoughPercentSavings;
+                    buffer.writeBoolean(useCompressed);
+                    if (useCompressed) {
+                        buffer.writeVarInt(rawSize);
+                        if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
+                            LOGGER.debug("Aggregated and compressed: {} -> {} bytes ({} %)",
+                                    rawSize, compressedSize,
+                                    String.format("%.2f", 100f * compressedSize / rawSize));
+                        }
+                        buffer.writeBytes(compressedBuf);
+                        this.bakedSize = compressedSize;
+                    } else {
+                        if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
+                            LOGGER.debug("Skip compression (insufficient gain): {} -> {} bytes, saved {} bytes",
+                                    rawSize, compressedSize, savedBytes);
+                        }
+                        buffer.writeBytes(rawBuf);
+                        this.bakedSize = rawSize;
                     }
-                    buffer.writeBytes(compressedBuf);
-                    this.bakedSize = compressedBuf.readableBytes();
                 } finally {
                     compressedBuf.release();
                 }
             } else {
+                buffer.writeBoolean(false);
                 buffer.writeBytes(rawBuf);
                 this.bakedSize = rawSize;
             }

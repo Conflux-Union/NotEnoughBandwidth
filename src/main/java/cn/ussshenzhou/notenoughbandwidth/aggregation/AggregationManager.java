@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.aggregation;
 
+import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
@@ -20,8 +21,6 @@ import java.util.concurrent.*;
 
 public class AggregationManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
-    private static final int MIN_BATCH_PACKETS = 4;
-    private static final int MAX_EXTRA_CYCLES = 2;
     private static final ConcurrentHashMap<ClientConnection, ArrayList<AggregatedEncodePacket>> PACKET_BUFFER = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<ClientConnection, Integer> FLUSH_WAIT = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(
@@ -50,6 +49,9 @@ public class AggregationManager {
     }
 
     private static void flush() {
+        var cfg = NotEnoughBandwidthConfig.get();
+        int minBatchPackets = cfg.getAggregationMinBatchPackets();
+        int maxExtraCycles = cfg.getAggregationMaxExtraCycles();
         // Purge dead connections without holding a global lock.
         PACKET_BUFFER.keySet().removeIf(c -> !c.isOpen());
         FLUSH_WAIT.keySet().removeIf(c -> !c.isOpen());
@@ -63,9 +65,9 @@ public class AggregationManager {
                 if (packets.isEmpty()) {
                     continue;
                 }
-                if (packets.size() < MIN_BATCH_PACKETS) {
+                if (packets.size() < minBatchPackets) {
                     int waited = FLUSH_WAIT.getOrDefault(connection, 0);
-                    if (waited < MAX_EXTRA_CYCLES) {
+                    if (waited < maxExtraCycles) {
                         FLUSH_WAIT.put(connection, waited + 1);
                         continue;
                     }
