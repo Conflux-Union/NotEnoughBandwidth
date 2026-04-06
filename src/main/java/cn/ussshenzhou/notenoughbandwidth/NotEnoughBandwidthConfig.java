@@ -22,13 +22,19 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add("minecraft:player_info_remove");
     }};
     public boolean debugLog = false;
-    public int compressionLevel = 6;
-    public int contextLevel = 23;
+    public int compressionLevel = 10;
+    public int contextLevel = 25;
+    public int minCompressionBytes = 24;
+    public int minCompressionSavingsBytes = 12;
+    public int minCompressionSavingsPercent = 5;
+    public int aggregationMinBatchPackets = 6;
+    public int aggregationMaxExtraCycles = 1;
     public int dccSizeLimit = 60;
     public int dccDistance = 5;
     public int dccTimeout = 60;
     public boolean chunkCacheEnabled = true;
     public int chunkCacheMaxSizeMB = 2048;
+    public int chunkCacheCompressionLevel = 8;
 
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
@@ -61,5 +67,29 @@ public class NotEnoughBandwidthConfig implements TConfig {
 
     public int getContextLevel() {
         return MathHelper.clamp(contextLevel, 21, 25);
+    }
+
+    public int getMinCompressionBytes() {
+        return MathHelper.clamp(minCompressionBytes, 1, 512);
+    }
+
+    public int getMinCompressionSavingsBytes() {
+        return MathHelper.clamp(minCompressionSavingsBytes, 0, 1024);
+    }
+
+    public int getMinCompressionSavingsPercent() {
+        return MathHelper.clamp(minCompressionSavingsPercent, 0, 95);
+    }
+
+    public int getAggregationMinBatchPackets() {
+        return MathHelper.clamp(aggregationMinBatchPackets, 1, 64);
+    }
+
+    public int getAggregationMaxExtraCycles() {
+        return MathHelper.clamp(aggregationMaxExtraCycles, 0, 20);
+    }
+
+    public int getChunkCacheCompressionLevel() {
+        return MathHelper.clamp(chunkCacheCompressionLevel, 1, 19);
     }
 }

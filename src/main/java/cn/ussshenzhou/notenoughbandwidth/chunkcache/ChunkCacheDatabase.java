@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.chunkcache;
 
+import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import com.github.luben.zstd.Zstd;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -78,7 +79,8 @@ public class ChunkCacheDatabase implements AutoCloseable {
     }
 
     public void put(long hash, byte[] data) {
-        byte[] compressed = Zstd.compress(data, 6);
+        int compressionLevel = NotEnoughBandwidthConfig.get().getChunkCacheCompressionLevel();
+        byte[] compressed = Zstd.compress(data, compressionLevel);
         byte[] value = new byte[TIMESTAMP_BYTES + compressed.length];
         ByteBuffer.wrap(value).putLong(System.currentTimeMillis());
         System.arraycopy(compressed, 0, value, TIMESTAMP_BYTES, compressed.length);
