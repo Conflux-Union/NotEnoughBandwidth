@@ -13,7 +13,7 @@ import net.minecraft.util.Identifier;
  */
 public record NebAckPayload() implements CustomPayload {
     public static final Id<NebAckPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "ack"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "ack"));
 
     public static final PacketCodec<PacketByteBuf, NebAckPayload> CODEC =
             PacketCodec.of((payload, buf) -> {}, buf -> new NebAckPayload());

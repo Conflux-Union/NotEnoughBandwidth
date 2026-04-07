@@ -18,7 +18,7 @@ import java.util.List;
  */
 public record IndexSyncPayload(List<Identifier> types, String serverId) implements CustomPayload {
     public static final Id<IndexSyncPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "index_sync"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "index_sync"));
 
     public static final PacketCodec<PacketByteBuf, IndexSyncPayload> CODEC =
             PacketCodec.of(IndexSyncPayload::write, IndexSyncPayload::read);
