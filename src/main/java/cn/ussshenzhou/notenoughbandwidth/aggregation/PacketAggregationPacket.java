@@ -29,7 +29,7 @@ import java.util.ArrayList;
 public class PacketAggregationPacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
 
-    public static final Identifier CHANNEL = new Identifier(ModConstants.MOD_ID, "packet_aggregation_packet");
+    public static final Identifier CHANNEL = new Identifier(ModConstants.NETWORK_NAMESPACE, "packet_aggregation_packet");
 
     /**
      * Passes baked (compressed) size from write() to the encoder mixin via the
