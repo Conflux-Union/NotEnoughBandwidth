@@ -16,7 +16,7 @@ import net.minecraft.util.Identifier;
  */
 public record ChunkHashPayload(int chunkX, int chunkZ, long contentHash) implements CustomPayload {
     public static final Id<ChunkHashPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "chunk_hash"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "chunk_hash"));
 
     public static final PacketCodec<PacketByteBuf, ChunkHashPayload> CODEC =
             PacketCodec.of(ChunkHashPayload::write, ChunkHashPayload::read);

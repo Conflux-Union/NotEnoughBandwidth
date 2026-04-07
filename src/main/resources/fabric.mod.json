@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "neb",
+  "id": "neb-fabric",
   "version": "${version}",
   "name": "NotEnoughBandwidth",
   "description": "Network bandwidth optimization for Minecraft",
@@ -12,8 +12,8 @@
     "main": ["cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidth"],
     "client": ["cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthClient"]
   },
-  "mixins": ["neb.mixins.json"],
-  "accessWidener": "neb.accesswidener",
+  "mixins": ["neb-fabric.mixins.json"],
+  "accessWidener": "neb-fabric.accesswidener",
   "depends": {
     "fabricloader": ">=0.18.0",
     "minecraft": "~1.21.4",

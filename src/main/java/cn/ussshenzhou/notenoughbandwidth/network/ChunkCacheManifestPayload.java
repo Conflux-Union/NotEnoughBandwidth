@@ -14,7 +14,7 @@ import net.minecraft.util.Identifier;
  */
 public record ChunkCacheManifestPayload(byte[] bloomFilterBytes) implements CustomPayload {
     public static final Id<ChunkCacheManifestPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "chunk_cache_manifest"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "chunk_cache_manifest"));
 
     private static final int MAX_BLOOM_FILTER_SIZE = 2 * 1024 * 1024; // 2MB max
 

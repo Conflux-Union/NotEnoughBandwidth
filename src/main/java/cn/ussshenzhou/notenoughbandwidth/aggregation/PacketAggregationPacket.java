@@ -27,7 +27,7 @@ public class PacketAggregationPacket implements CustomPayload {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
 
     public static final Id<PacketAggregationPacket> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "packet_aggregation_packet"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "packet_aggregation_packet"));
 
     public static final PacketCodec<RegistryByteBuf, PacketAggregationPacket> CODEC =
             PacketCodec.of(PacketAggregationPacket::write, PacketAggregationPacket::new);

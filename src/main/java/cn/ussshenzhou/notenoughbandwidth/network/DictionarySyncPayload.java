@@ -13,7 +13,7 @@ import net.minecraft.util.Identifier;
  */
 public record DictionarySyncPayload(byte[] dictionary) implements CustomPayload {
     public static final Id<DictionarySyncPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "dictionary_sync"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "dictionary_sync"));
 
     public static final PacketCodec<PacketByteBuf, DictionarySyncPayload> CODEC =
             PacketCodec.of(DictionarySyncPayload::write, DictionarySyncPayload::read);
