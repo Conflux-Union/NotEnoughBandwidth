@@ -13,7 +13,7 @@ import net.minecraft.util.Identifier;
  */
 public record ChunkRequestPayload(int chunkX, int chunkZ) implements CustomPayload {
     public static final Id<ChunkRequestPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "chunk_request"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "chunk_request"));
 
     public static final PacketCodec<PacketByteBuf, ChunkRequestPayload> CODEC =
             PacketCodec.of(ChunkRequestPayload::write, ChunkRequestPayload::read);

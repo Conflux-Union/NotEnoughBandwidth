@@ -8,7 +8,7 @@ import net.minecraft.util.Identifier;
 
 public record StatQueryPayload() implements CustomPayload {
     public static final Id<StatQueryPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "stat_query"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "stat_query"));
 
     public static final PacketCodec<ByteBuf, StatQueryPayload> CODEC =
             PacketCodec.unit(new StatQueryPayload());

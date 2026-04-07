@@ -24,7 +24,7 @@ public record StatRespondPayload(
         long chunkCacheSavedBytes
 ) implements CustomPayload {
     public static final Id<StatRespondPayload> TYPE =
-            new Id<>(Identifier.of(ModConstants.MOD_ID, "stat_resp"));
+            new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "stat_resp"));
 
     public static final PacketCodec<ByteBuf, StatRespondPayload> CODEC = new PacketCodec<>() {
         @Override

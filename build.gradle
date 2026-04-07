@@ -15,7 +15,7 @@ repositories {
 }
 
 loom {
-    accessWidenerPath = file("src/main/resources/neb.accesswidener")
+    accessWidenerPath = file("src/main/resources/neb-fabric.accesswidener")
 }
 
 dependencies {
