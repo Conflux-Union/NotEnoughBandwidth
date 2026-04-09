@@ -1,7 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.mixin;
 
 import cn.ussshenzhou.notenoughbandwidth.chunk.CachedChunkTrackingView;
-import net.minecraft.server.network.ChunkFilter;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ChunkTicketManager;
 import net.minecraft.server.world.ChunkTicketType;
@@ -41,7 +40,7 @@ public abstract class ChunkMapMixin {
      */
     @Overwrite
     private void sendWatchPackets(ServerPlayerEntity player) {
-        if (player.getWorld() != this.world) {
+        if (player.getEntityWorld() != this.world) {
             return;
         }
         CachedChunkTrackingView.onUpdateChunkTracking(player, getViewDistance(player), new CachedChunkTrackingView.Context() {
@@ -59,7 +58,7 @@ public abstract class ChunkMapMixin {
             public void putTicket(ChunkPos pos, int ticks) {
                 var ticketType = nebDccTicket.get();
                 if (ticketType == null || ticketType.expiryTicks() != ticks) {
-                    var newType = new ChunkTicketType(ticks, false, ChunkTicketType.Use.LOADING);
+                    var newType = new ChunkTicketType(ticks, ChunkTicketType.FOR_LOADING);
                     nebDccTicket.compareAndSet(ticketType, newType);
                     ticketType = nebDccTicket.get();
                 }
