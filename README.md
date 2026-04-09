@@ -16,7 +16,7 @@ In the TeaCon Jiachen dataset, compared to raw uncompressed data, NEB can theore
 
 In tests conducted in a Vanilla environment, the server outbound traffic was reduced to **18%** of its original size. As the number of installed mods increases, compression performance improves.
 
-Press **Alt+N** in-game to view the network traffic status.
+Press **N** in-game to view the network traffic status.
 
 ## Main Features
 
