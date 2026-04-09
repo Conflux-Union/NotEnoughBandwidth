@@ -63,7 +63,7 @@ public class ModNetworking {
         // Client didn't have the chunk despite bloom-filter hit; resend full data.
         ServerPlayNetworking.registerGlobalReceiver(ChunkRequestPayload.TYPE, (payload, context) -> {
             ServerPlayerEntity player = context.player();
-            ServerWorld world = player.getWorld();
+            ServerWorld world = player.getEntityWorld();
             ChunkPos pos = new ChunkPos(payload.chunkX(), payload.chunkZ());
             world.getServer().execute(() -> {
                 var chunk = world.getChunkManager().getWorldChunk(pos.x, pos.z);
