@@ -46,4 +46,8 @@ public class SimpleStatManager {
     public static volatile long chunkCacheHitsServer;
     public static volatile long chunkCacheMissesServer;
     public static volatile long chunkCacheSavedBytesServer;
+
+    // Server-side NIC traffic speeds received via StatRespondPayload.
+    public static volatile long nicInboundSpeedServer;
+    public static volatile long nicOutboundSpeedServer;
 }
