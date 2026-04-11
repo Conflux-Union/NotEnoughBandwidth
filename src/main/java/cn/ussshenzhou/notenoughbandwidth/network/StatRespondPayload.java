@@ -21,7 +21,9 @@ public record StatRespondPayload(
         int dictSampleThreshold,
         long chunkCacheHits,
         long chunkCacheMisses,
-        long chunkCacheSavedBytes
+        long chunkCacheSavedBytes,
+        long nicInboundSpeed,
+        long nicOutboundSpeed
 ) implements CustomPayload {
     public static final Id<StatRespondPayload> TYPE =
             new Id<>(Identifier.of(ModConstants.NETWORK_NAMESPACE, "stat_resp"));
@@ -41,6 +43,8 @@ public record StatRespondPayload(
                     PacketCodecs.VAR_INT.decode(buf),
                     PacketCodecs.VAR_INT.decode(buf),
                     PacketCodecs.VAR_INT.decode(buf),
+                    PacketCodecs.VAR_LONG.decode(buf),
+                    PacketCodecs.VAR_LONG.decode(buf),
                     PacketCodecs.VAR_LONG.decode(buf),
                     PacketCodecs.VAR_LONG.decode(buf),
                     PacketCodecs.VAR_LONG.decode(buf)
@@ -63,6 +67,8 @@ public record StatRespondPayload(
             PacketCodecs.VAR_LONG.encode(buf, value.chunkCacheHits);
             PacketCodecs.VAR_LONG.encode(buf, value.chunkCacheMisses);
             PacketCodecs.VAR_LONG.encode(buf, value.chunkCacheSavedBytes);
+            PacketCodecs.VAR_LONG.encode(buf, value.nicInboundSpeed);
+            PacketCodecs.VAR_LONG.encode(buf, value.nicOutboundSpeed);
         }
     };
 
