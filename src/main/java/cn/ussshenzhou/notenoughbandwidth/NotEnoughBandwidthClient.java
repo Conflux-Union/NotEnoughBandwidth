@@ -6,6 +6,7 @@ import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncHandler;
 import cn.ussshenzhou.notenoughbandwidth.network.ModNetworking;
 import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.stat.ModKey;
+import cn.ussshenzhou.notenoughbandwidth.stat.SystemTrafficMonitor;
 import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -17,6 +18,7 @@ public class NotEnoughBandwidthClient implements ClientModInitializer {
         ModKey.register();
         ModNetworking.registerClient();
         IndexSyncHandler.registerClient();
+        SystemTrafficMonitor.init();
 
         ChunkCacheManager.setGameDir(MinecraftClient.getInstance().runDirectory.toPath());
 

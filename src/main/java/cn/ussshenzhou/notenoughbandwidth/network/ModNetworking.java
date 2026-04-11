@@ -5,6 +5,7 @@ import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.mixin.ClientPlayNetworkHandlerInvoker;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
+import cn.ussshenzhou.notenoughbandwidth.stat.SystemTrafficMonitor;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -98,7 +99,9 @@ public class ModNetworking {
                         DictionaryManager.getSampleThreshold(),
                         SimpleStatManager.chunkCacheHits.get(),
                         SimpleStatManager.chunkCacheMisses.get(),
-                        SimpleStatManager.chunkCacheSavedBytes.get()
+                        SimpleStatManager.chunkCacheSavedBytes.get(),
+                        SystemTrafficMonitor.getInboundBytesPerSec(),
+                        SystemTrafficMonitor.getOutboundBytesPerSec()
                 ));
             }
         });
@@ -185,6 +188,8 @@ public class ModNetworking {
             SimpleStatManager.chunkCacheHitsServer = payload.chunkCacheHits();
             SimpleStatManager.chunkCacheMissesServer = payload.chunkCacheMisses();
             SimpleStatManager.chunkCacheSavedBytesServer = payload.chunkCacheSavedBytes();
+            SimpleStatManager.nicInboundSpeedServer = payload.nicInboundSpeed();
+            SimpleStatManager.nicOutboundSpeedServer = payload.nicOutboundSpeed();
         });
     }
 }
