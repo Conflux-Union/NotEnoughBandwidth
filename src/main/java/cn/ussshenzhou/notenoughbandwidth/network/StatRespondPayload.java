@@ -17,7 +17,9 @@ public record StatRespondPayload(
         int dictSampleThreshold,
         long chunkCacheHits,
         long chunkCacheMisses,
-        long chunkCacheSavedBytes
+        long chunkCacheSavedBytes,
+        long nicInboundSpeed,
+        long nicOutboundSpeed
 ) {
     public static final Identifier CHANNEL = new Identifier("neb", "stat_resp");
 
@@ -36,6 +38,8 @@ public record StatRespondPayload(
         buf.writeLong(chunkCacheHits);
         buf.writeLong(chunkCacheMisses);
         buf.writeLong(chunkCacheSavedBytes);
+        buf.writeLong(nicInboundSpeed);
+        buf.writeLong(nicOutboundSpeed);
     }
 
     public static StatRespondPayload read(PacketByteBuf buf) {
@@ -51,6 +55,8 @@ public record StatRespondPayload(
                 buf.readVarInt(),
                 buf.readVarInt(),
                 buf.readVarInt(),
+                buf.readLong(),
+                buf.readLong(),
                 buf.readLong(),
                 buf.readLong(),
                 buf.readLong()
