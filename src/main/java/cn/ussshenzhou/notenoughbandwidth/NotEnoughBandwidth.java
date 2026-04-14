@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth;
 
+import cn.ussshenzhou.notenoughbandwidth.command.NebCommand;
 import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncHandler;
 import cn.ussshenzhou.notenoughbandwidth.network.ModNetworking;
@@ -22,6 +23,7 @@ public class NotEnoughBandwidth implements ModInitializer {
         ModNetworking.registerCommon();
         IndexSyncHandler.registerServer();
         SystemTrafficMonitor.init();
+        NebCommand.register();
         LOGGER.info("NEB initialized.");
     }
 

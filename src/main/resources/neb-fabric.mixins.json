@@ -10,10 +10,13 @@
     "CustomPacketPayloadMixin",
     "ChunkMapMixin",
     "PlayerListMixin",
-    "ChunkDataSenderMixin"
+    "ChunkDataSenderMixin",
+    "ChunkDataWriteMixin",
+    "LightDataWriteMixin"
   ],
   "client": [
     "ClientChunkCacheMixin",
+    "ClientChunkLightRecomputeMixin",
     "ClientPlayNetworkHandlerInvoker"
   ],
   "injectors": {
