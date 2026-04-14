@@ -2,6 +2,9 @@
 
 **Fabric 模组，适用于 Minecraft 1.21.4** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重、区块光照剥离大幅削减网络流量。
 
+> [!NOTE]
+> Pre-release 版本可能包含实验性新功能以供提前测试。如希望抢先体验，请前往 [Releases 页面](https://github.com/RMS-Server/NotEnoughBandwidth/releases) 下载 Pre-release；否则请下载最新正式版。
+
 > **如需适配更多版本或遇到问题**，欢迎提交 [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues)、加入 QQ 群 **362669270**（[邀请链接](https://qm.qq.com/q/Ch5CGWyjjc)），或发送邮件至 [support@rms.net.cn](mailto:support@rms.net.cn)。
 
 > 本项目是 USS_Shenzhou 原版 [NeoForge 模组](https://github.com/USS-Shenzhou/NotEnoughBandwidth) 的非官方 Fabric 移植。

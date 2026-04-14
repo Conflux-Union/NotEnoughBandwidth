@@ -2,6 +2,9 @@
 
 **Fabric mod for Minecraft 1.21.4** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, persistent client-side chunk deduplication, and chunk light stripping.
 
+> [!NOTE]
+> Pre-release versions may include experimental features for early testing. If you want to try new features before they are officially released, download a [pre-release](https://github.com/RMS-Server/NotEnoughBandwidth/releases). Otherwise, stick to the latest stable release.
+
 > **Need support or a port for another version?**
 > Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
 
