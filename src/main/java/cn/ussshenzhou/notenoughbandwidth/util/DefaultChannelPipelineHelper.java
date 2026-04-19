@@ -2,8 +2,8 @@ package cn.ussshenzhou.notenoughbandwidth.util;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.DefaultChannelPipeline;
-import net.minecraft.network.handler.EncoderHandler;
-import net.minecraft.network.handler.DecoderHandler;
+import net.minecraft.network.PacketEncoder;
+import net.minecraft.network.PacketDecoder;
 
 import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Field;
@@ -28,14 +28,14 @@ public class DefaultChannelPipelineHelper {
     }
 
     @Nullable
-    public static EncoderHandler<?> getPacketEncoder(DefaultChannelPipeline pipeline) {
+    public static PacketEncoder<?> getPacketEncoder(DefaultChannelPipeline pipeline) {
         try {
             Object head = HEAD.get(pipeline);
             Object tail = TAIL.get(pipeline);
             var ctx = (ChannelHandlerContext) NEXT.get(head);
             if (ctx == null) return null;
             while (ctx != null && ctx != tail) {
-                if (ctx.handler() instanceof EncoderHandler<?> encoder) {
+                if (ctx.handler() instanceof PacketEncoder<?> encoder) {
                     return encoder;
                 }
                 ctx = (ChannelHandlerContext) NEXT.get(ctx);
@@ -47,13 +47,13 @@ public class DefaultChannelPipelineHelper {
     }
 
     @Nullable
-    public static DecoderHandler<?> getPacketDecoder(DefaultChannelPipeline pipeline) {
+    public static PacketDecoder<?> getPacketDecoder(DefaultChannelPipeline pipeline) {
         try {
             Object head = HEAD.get(pipeline);
             Object tail = TAIL.get(pipeline);
             var ctx = (ChannelHandlerContext) NEXT.get(head);
             while (ctx != null && ctx != tail) {
-                if (ctx.handler() instanceof DecoderHandler<?> decoder) {
+                if (ctx.handler() instanceof PacketDecoder<?> decoder) {
                     return decoder;
                 }
                 ctx = (ChannelHandlerContext) NEXT.get(ctx);

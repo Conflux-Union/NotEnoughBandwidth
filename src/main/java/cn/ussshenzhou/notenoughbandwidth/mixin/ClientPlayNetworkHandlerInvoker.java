@@ -1,25 +1,25 @@
 package cn.ussshenzhou.notenoughbandwidth.mixin;
 
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.network.packet.s2c.play.ChunkData;
-import net.minecraft.network.packet.s2c.play.LightData;
-import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 /**
- * Exposes private ClientPlayNetworkHandler methods needed for applying
+ * Exposes private ClientPacketListener methods needed for applying
  * cached chunk data without going through the packet pipeline.
  */
-@Mixin(ClientPlayNetworkHandler.class)
+@Mixin(ClientPacketListener.class)
 public interface ClientPlayNetworkHandlerInvoker {
 
-    @Invoker("loadChunk")
-    void nebLoadChunk(int x, int z, ChunkData chunkData);
+    @Invoker("updateLevelChunk")
+    void nebLoadChunk(int x, int z, ClientboundLevelChunkPacketData chunkData);
 
-    @Invoker("readLightData")
-    void nebReadLightData(int x, int z, LightData lightData, boolean bl);
+    @Invoker("applyLightData")
+    void nebReadLightData(int x, int z, ClientboundLightUpdatePacketData lightData, boolean bl);
 
-    @Invoker("scheduleRenderChunk")
-    void nebScheduleRenderChunk(WorldChunk chunk, int x, int z);
+    @Invoker("enableChunkLight")
+    void nebScheduleRenderChunk(LevelChunk chunk, int x, int z);
 }

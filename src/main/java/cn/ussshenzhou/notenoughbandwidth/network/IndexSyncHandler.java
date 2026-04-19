@@ -11,7 +11,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
-import net.minecraft.util.Identifier;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  * Synchronizes the payload type index table between server and client.
  * <p>
  * On NeoForge this was free via modded network negotiation.
- * On Fabric we do it ourselves: server collects all registered CustomPayload
+ * On Fabric we do it ourselves: server collects all registered CustomPacketPayload
  * types, sorts them, sends the list to the client on join.
  */
 public class IndexSyncHandler {
@@ -40,8 +40,8 @@ public class IndexSyncHandler {
     }
 
     public static void registerServer() {
-        PayloadTypeRegistry.playS2C().register(DictionarySyncPayload.TYPE, DictionarySyncPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(IndexSyncPayload.TYPE, IndexSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(DictionarySyncPayload.TYPE, DictionarySyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(IndexSyncPayload.TYPE, IndexSyncPayload.CODEC);
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var connection = handler.connection;
@@ -73,7 +73,7 @@ public class IndexSyncHandler {
     public static void registerClient() {
         ClientPlayNetworking.registerGlobalReceiver(DictionarySyncPayload.TYPE, (payload, context) -> {
             DictionaryManager.setDict(payload.dictionary());
-            var conn = context.player().networkHandler.connection;
+            var conn = context.player().connection.connection;
             ZstdHelper.evict(conn);
             if (payload.dictionary() != null && payload.dictionary().length > 0) {
                 LOGGER.info("Received dictionary from server ({} bytes)", payload.dictionary().length);
@@ -87,13 +87,13 @@ public class IndexSyncHandler {
                     payload.types().size(), payload.serverId());
             NamespaceIndexManager.init(payload.types());
             AggregationManager.init();
-            var connection = context.player().networkHandler.connection;
+            var connection = context.player().connection.connection;
             NebConnectionRegistry.markEnabled(connection);
 
             // Open chunk cache keyed by server UUID (reliable behind proxies).
             // Fall back to connection address if the server is an old NEB version without UUID.
             String cacheKey = payload.serverId().isEmpty()
-                    ? connection.getAddress().toString()
+                    ? connection.getRemoteAddress().toString()
                     : payload.serverId();
             ChunkCacheManager.onClientConnect(cacheKey);
 
@@ -111,8 +111,8 @@ public class IndexSyncHandler {
         Set<Identifier> types = new LinkedHashSet<>();
         try {
             if (packetTypesField != null) {
-                var s2cMap = (Map<Identifier, ?>) packetTypesField.get(PayloadTypeRegistryImpl.PLAY_S2C);
-                var c2sMap = (Map<Identifier, ?>) packetTypesField.get(PayloadTypeRegistryImpl.PLAY_C2S);
+                var s2cMap = (Map<Identifier, ?>) packetTypesField.get(PayloadTypeRegistryImpl.CLIENTBOUND_PLAY);
+                var c2sMap = (Map<Identifier, ?>) packetTypesField.get(PayloadTypeRegistryImpl.SERVERBOUND_PLAY);
                 types.addAll(s2cMap.keySet());
                 types.addAll(c2sMap.keySet());
             }

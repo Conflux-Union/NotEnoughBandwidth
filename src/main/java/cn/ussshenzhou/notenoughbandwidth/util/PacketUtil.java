@@ -1,26 +1,26 @@
 package cn.ussshenzhou.notenoughbandwidth.util;
 
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.resources.Identifier;
 
 public class PacketUtil {
     public static Identifier getTrueType(Packet<?> packet) {
-        if (packet instanceof CustomPayloadC2SPacket p) {
-            return p.payload().getId().id();
-        } else if (packet instanceof CustomPayloadS2CPacket p) {
-            return p.payload().getId().id();
+        if (packet instanceof ServerboundCustomPayloadPacket p) {
+            return p.payload().type().id();
+        } else if (packet instanceof ClientboundCustomPayloadPacket p) {
+            return p.payload().type().id();
         } else {
-            return packet.getPacketType().id();
+            return packet.type().id();
         }
     }
 
     public static Object getTruePacket(Packet<?> packet) {
-        if (packet instanceof CustomPayloadC2SPacket p) {
+        if (packet instanceof ServerboundCustomPayloadPacket p) {
             return p.payload();
-        } else if (packet instanceof CustomPayloadS2CPacket p) {
+        } else if (packet instanceof ClientboundCustomPayloadPacket p) {
             return p.payload();
         } else {
             return packet;

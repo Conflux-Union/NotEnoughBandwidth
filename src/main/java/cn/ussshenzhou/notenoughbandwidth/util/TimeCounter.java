@@ -16,13 +16,13 @@ public class TimeCounter {
     }
 
     private synchronized void update() {
-        long now = Util.getMeasuringTimeMs();
+        long now = Util.getMillis();
         container.keySet().removeIf(then -> now - then > windowsSizeMs);
     }
 
     public synchronized void put(int value) {
         update();
-        container.addTo(Util.getMeasuringTimeMs(), value);
+        container.addTo(Util.getMillis(), value);
     }
 
     public synchronized double averageIn1s() {

@@ -3,8 +3,8 @@ package cn.ussshenzhou.notenoughbandwidth.indextype;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.Pair;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Tuple;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,7 +127,7 @@ public class NamespaceIndexManager {
     }
 
     private static void indexVanillaPackets(AtomicInteger namespaceIndex) {
-        VANILLA_PATHS.forEach(path -> fillSingle(namespaceIndex, Identifier.ofVanilla(path)));
+        VANILLA_PATHS.forEach(path -> fillSingle(namespaceIndex, Identifier.withDefaultNamespace(path)));
     }
 
     private static void indexCustomPayloads(List<Identifier> types, AtomicInteger namespaceIndex) {
@@ -162,9 +162,9 @@ public class NamespaceIndexManager {
         return pathMap != null && pathMap.containsKey(type.getPath());
     }
 
-    public static Pair<Integer, Integer> getCheckedIndex(Identifier type) {
+    public static Tuple<Integer, Integer> getCheckedIndex(Identifier type) {
         int namespaceId = NAMESPACE_MAP.getInt(type.getNamespace());
-        return new Pair<>(namespaceId, PATH_MAPS.get(namespaceId).getInt(type.getPath()));
+        return new Tuple<>(namespaceId, PATH_MAPS.get(namespaceId).getInt(type.getPath()));
     }
 
     public static Identifier getIdentifier(int namespaceIndex, int pathIndex) {
@@ -172,7 +172,7 @@ public class NamespaceIndexManager {
         if (namespaceIndex == 0) {
             throw new UnsupportedOperationException("namespaceIndex should not be 0");
         }
-        return Identifier.of(NAMESPACES.get(namespaceIndex), PATHS.get(namespaceIndex).get(pathIndex));
+        return Identifier.fromNamespaceAndPath(NAMESPACES.get(namespaceIndex), PATHS.get(namespaceIndex).get(pathIndex));
     }
 
     public static boolean ready() {

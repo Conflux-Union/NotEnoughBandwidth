@@ -5,12 +5,12 @@ import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.channel.DefaultChannelPipeline;
-import net.minecraft.network.ClientConnection;
-import net.minecraft.network.NetworkPhase;
-import net.minecraft.network.NetworkSide;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
+import net.minecraft.network.Connection;
+import net.minecraft.network.ConnectionProtocol;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,8 +22,8 @@ public class AggregationManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
     private static final int MIN_BATCH_PACKETS = 4;
     private static final int MAX_EXTRA_CYCLES = 2;
-    private static final ConcurrentHashMap<ClientConnection, ArrayList<AggregatedEncodePacket>> PACKET_BUFFER = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<ClientConnection, Integer> FLUSH_WAIT = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Connection, ArrayList<AggregatedEncodePacket>> PACKET_BUFFER = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Connection, Integer> FLUSH_WAIT = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(
             new ThreadFactoryBuilder().setNameFormat("NEB-Flush-thread").setDaemon(true).build());
     private static final ArrayList<ScheduledFuture<?>> TASKS = new ArrayList<>();
@@ -41,7 +41,7 @@ public class AggregationManager {
         initialized = true;
     }
 
-    public static void takeOver(Packet<?> packet, ClientConnection connection) {
+    public static void takeOver(Packet<?> packet, Connection connection) {
         var type = PacketUtil.getTrueType(packet);
         var list = PACKET_BUFFER.computeIfAbsent(connection, k -> new ArrayList<>());
         synchronized (list) {
@@ -51,8 +51,8 @@ public class AggregationManager {
 
     private static void flush() {
         // Purge dead connections without holding a global lock.
-        PACKET_BUFFER.keySet().removeIf(c -> !c.isOpen());
-        FLUSH_WAIT.keySet().removeIf(c -> !c.isOpen());
+        PACKET_BUFFER.keySet().removeIf(c -> !c.isConnected());
+        FLUSH_WAIT.keySet().removeIf(c -> !c.isConnected());
         for (var entry : PACKET_BUFFER.entrySet()) {
             var connection = entry.getKey();
             var packets = entry.getValue();
@@ -76,7 +76,7 @@ public class AggregationManager {
         }
     }
 
-    public static void flushConnection(ClientConnection connection) {
+    public static void flushConnection(Connection connection) {
         TIMER.execute(() -> flushConnectionInternal(connection));
     }
 
@@ -85,11 +85,11 @@ public class AggregationManager {
      * Used when a skip-type packet must be sent immediately after the buffered batch
      * to preserve packet ordering.
      */
-    public static void flushConnectionSync(ClientConnection connection) {
+    public static void flushConnectionSync(Connection connection) {
         flushConnectionInternal(connection);
     }
 
-    public static void discardConnection(ClientConnection connection) {
+    public static void discardConnection(Connection connection) {
         var packets = PACKET_BUFFER.remove(connection);
         if (packets != null) {
             synchronized (packets) {
@@ -99,8 +99,8 @@ public class AggregationManager {
         FLUSH_WAIT.remove(connection);
     }
 
-    private static void flushConnectionInternal(ClientConnection connection) {
-        PACKET_BUFFER.keySet().removeIf(c -> !c.isOpen());
+    private static void flushConnectionInternal(Connection connection) {
+        PACKET_BUFFER.keySet().removeIf(c -> !c.isConnected());
         FLUSH_WAIT.remove(connection);
         var packets = PACKET_BUFFER.get(connection);
         if (packets == null) return;
@@ -109,14 +109,14 @@ public class AggregationManager {
         }
     }
 
-    private static void flushInternal(ClientConnection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
+    private static void flushInternal(Connection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
         try {
             if (packets == null || packets.isEmpty()) {
                 return;
             }
             var listener = connection.getPacketListener();
-            if (!connection.isOpen() || listener == null
-                    || listener.getPhase() != NetworkPhase.PLAY
+            if (!connection.isConnected() || listener == null
+                    || listener.protocol() != ConnectionProtocol.PLAY
                     || !NebConnectionRegistry.isEnabled(connection)) {
                 packets.clear();
                 return;
@@ -124,20 +124,20 @@ public class AggregationManager {
             var encoder = DefaultChannelPipelineHelper.getPacketEncoder(
                     (DefaultChannelPipeline) connection.channel.pipeline());
             if (encoder == null) {
-                LOGGER.error("Failed to get EncoderHandler of connection {} {}.",
-                        connection.getSide(), connection.getAddress());
+                LOGGER.error("Failed to get PacketEncoder of connection {} {}.",
+                        connection.getReceiving(), connection.getRemoteAddress());
                 return;
             }
             var sendPackets = new ArrayList<>(packets);
             packets.clear();
             var aggregationPayload = new PacketAggregationPacket(
-                    sendPackets, encoder.state, connection);
-            // encoder.state.side() = outbound direction (CLIENTBOUND on server, SERVERBOUND on client)
-            Packet<?> wrapper = encoder.state.side() == NetworkSide.CLIENTBOUND
-                    ? new CustomPayloadS2CPacket(aggregationPayload)
-                    : new CustomPayloadC2SPacket(aggregationPayload);
+                    sendPackets, encoder.protocolInfo, connection);
+            // encoder.protocolInfo.flow() = outbound direction (CLIENTBOUND on server, SERVERBOUND on client)
+            Packet<?> wrapper = encoder.protocolInfo.flow() == PacketFlow.CLIENTBOUND
+                    ? new ClientboundCustomPayloadPacket(aggregationPayload)
+                    : new ServerboundCustomPayloadPacket(aggregationPayload);
             connection.send(wrapper);
-            connection.flush();
+            connection.flushChannel();
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to flush packets.", e);
         }

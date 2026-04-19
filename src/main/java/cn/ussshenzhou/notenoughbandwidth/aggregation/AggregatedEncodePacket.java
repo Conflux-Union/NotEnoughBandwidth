@@ -2,40 +2,41 @@ package cn.ussshenzhou.notenoughbandwidth.aggregation;
 
 import io.netty.buffer.ByteBuf;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
-import net.minecraft.network.NetworkSide;
-import net.minecraft.network.state.NetworkState;
-import net.minecraft.network.handler.PacketCodecDispatcher;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.ProtocolInfo;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Wraps a single packet for encoding into an aggregated blob.
+ * Wraps a single outbound packet for inclusion in an aggregated blob.
  * <p>
- * Vanilla game packets are encoded through the PacketCodecDispatcher codec.
+ * Vanilla packets are encoded through {@link ProtocolInfo#codec()}, whose
+ * {@code StreamCodec} writes the VarInt packet id followed by the packet body.
  * Custom payloads are encoded through their Fabric-registered payload codec
- * directly (without the outer CustomPayload wrapper), matching the NeoForge design.
+ * directly (skipping the outer {@code CustomPacketPayload} wrapper) to avoid
+ * re-transmitting the payload-type identifier that already lives in the
+ * aggregation blob's per-sub-packet prefix.
  */
-@SuppressWarnings("DataFlowIssue")
 public class AggregatedEncodePacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Encode");
 
     public final Identifier type;
     private final boolean isCustomPayload;
     private final Packet<?> packet;
-    private final CustomPayload payload;
+    private final CustomPacketPayload payload;
 
     public AggregatedEncodePacket(Packet<?> p, Identifier type) {
-        if (p instanceof CustomPayloadC2SPacket cp) {
+        if (p instanceof ServerboundCustomPayloadPacket cp) {
             this.isCustomPayload = true;
             this.packet = null;
             this.payload = cp.payload();
-        } else if (p instanceof CustomPayloadS2CPacket cp) {
+        } else if (p instanceof ClientboundCustomPayloadPacket cp) {
             this.isCustomPayload = true;
             this.packet = null;
             this.payload = cp.payload();
@@ -47,7 +48,7 @@ public class AggregatedEncodePacket {
         this.type = type;
     }
 
-    public void encode(ByteBuf buf, NetworkState<?> protocolInfo, NetworkSide side) {
+    public void encode(ByteBuf buf, ProtocolInfo<?> protocolInfo, PacketFlow side) {
         if (isCustomPayload) {
             encodeCustom(buf, side);
         } else {
@@ -56,16 +57,10 @@ public class AggregatedEncodePacket {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private void encodeVanilla(ByteBuf buf, NetworkState<?> protocolInfo) {
-        PacketCodecDispatcher vanillaCodec = (PacketCodecDispatcher) protocolInfo.codec();
-        var packetType = vanillaCodec.packetIdGetter.apply(packet);
-        int id = vanillaCodec.typeToIndex.getOrDefault(packetType, -1);
-        if (id == -1) {
-            LOGGER.error("Skipped: Unknown packet type {}", type);
-            return;
-        }
-        var entry = (PacketCodecDispatcher.PacketType) vanillaCodec.packetTypes.get(id);
-        var codec = (PacketCodec<ByteBuf, Packet<?>>) entry.codec();
+    private void encodeVanilla(ByteBuf buf, ProtocolInfo<?> protocolInfo) {
+        // ProtocolInfo.codec() is StreamCodec<ByteBuf, Packet<? super L>>.
+        // It writes VarInt(packet-id) + packet body, handling all vanilla dispatch internally.
+        StreamCodec codec = protocolInfo.codec();
         try {
             codec.encode(buf, packet);
         } catch (Exception e) {
@@ -74,16 +69,16 @@ public class AggregatedEncodePacket {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private void encodeCustom(ByteBuf buf, NetworkSide side) {
-        var registry = side == NetworkSide.CLIENTBOUND
-                ? PayloadTypeRegistryImpl.PLAY_S2C
-                : PayloadTypeRegistryImpl.PLAY_C2S;
+    private void encodeCustom(ByteBuf buf, PacketFlow side) {
+        var registry = side == PacketFlow.CLIENTBOUND
+                ? PayloadTypeRegistryImpl.CLIENTBOUND_PLAY
+                : PayloadTypeRegistryImpl.SERVERBOUND_PLAY;
         var payloadType = registry.get(type);
         if (payloadType == null) {
             LOGGER.error("Skipped: Unknown custom payload type {}", type);
             return;
         }
-        var codec = (PacketCodec) payloadType.codec();
+        StreamCodec codec = (StreamCodec) payloadType.codec();
         try {
             codec.encode(buf, payload);
         } catch (Exception e) {

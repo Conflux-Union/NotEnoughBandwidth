@@ -1,10 +1,10 @@
 package cn.ussshenzhou.notenoughbandwidth.stat;
 
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /**
- * Renders a multi-line time-series chart using DrawContext primitives.
+ * Renders a multi-line time-series chart using GuiGraphicsExtractor primitives.
  */
 public final class LineChart {
 
@@ -20,7 +20,7 @@ public final class LineChart {
      * @param colors ARGB color for each series
      * @param labels display name for each series
      */
-    public static void render(DrawContext ctx, TextRenderer tr, int x, int y, int w, int h,
+    public static void render(GuiGraphicsExtractor ctx, Font tr, int x, int y, int w, int h,
                               TimeSeries[] series, int[] colors, String[] labels) {
         // Background
         ctx.fill(x, y, x + w, y + h, BG_COLOR);
@@ -53,12 +53,12 @@ public final class LineChart {
             drawHorizontalLine(ctx, x + 1, x + w, gy, GRID_COLOR);
             long value = globalMax * i / GRID_LINES;
             String label = formatRate(value);
-            ctx.drawText(tr, label, x + 2, gy - 9, 0xFFCCCCCC, false);
+            ctx.text(tr, label, x + 2, gy - 9, 0xFFCCCCCC, false);
         }
 
         // X-axis labels
-        ctx.drawText(tr, "60s", x + 2, y + h + 2, 0xFF999999, false);
-        ctx.drawText(tr, "now", x + w - tr.getWidth("now"), y + h + 2, 0xFF999999, false);
+        ctx.text(tr, "60s", x + 2, y + h + 2, 0xFF999999, false);
+        ctx.text(tr, "now", x + w - tr.width("now"), y + h + 2, 0xFF999999, false);
 
         // Data lines
         int chartW = w - 1;
@@ -72,12 +72,12 @@ public final class LineChart {
         int legendX = x;
         for (int i = 0; i < labels.length; i++) {
             ctx.fill(legendX, legendY, legendX + 8, legendY + 8, colors[i]);
-            ctx.drawText(tr, labels[i], legendX + 11, legendY, 0xFFDDDDDD, false);
-            legendX += 11 + tr.getWidth(labels[i]) + 12;
+            ctx.text(tr, labels[i], legendX + 11, legendY, 0xFFDDDDDD, false);
+            legendX += 11 + tr.width(labels[i]) + 12;
         }
     }
 
-    private static void drawSeriesFromSnapshot(DrawContext ctx, long[] snap, int capacity, int color,
+    private static void drawSeriesFromSnapshot(GuiGraphicsExtractor ctx, long[] snap, int capacity, int color,
                                                int ox, int oy, int chartW, int chartH, long maxVal) {
         if (snap.length < 2) {
             return;
@@ -96,7 +96,7 @@ public final class LineChart {
     /**
      * Draw a line between two points using 1px-wide vertical fills (Bresenham-lite).
      */
-    private static void drawLineSegment(DrawContext ctx, int x1, int y1, int x2, int y2, int color) {
+    private static void drawLineSegment(GuiGraphicsExtractor ctx, int x1, int y1, int x2, int y2, int color) {
         int dx = x2 - x1;
         if (dx == 0) {
             int minY = Math.min(y1, y2);
@@ -125,11 +125,11 @@ public final class LineChart {
         }
     }
 
-    private static void drawVerticalLine(DrawContext ctx, int x, int y1, int y2, int color) {
+    private static void drawVerticalLine(GuiGraphicsExtractor ctx, int x, int y1, int y2, int color) {
         ctx.fill(x, y1, x + 1, y2, color);
     }
 
-    private static void drawHorizontalLine(DrawContext ctx, int x1, int x2, int y, int color) {
+    private static void drawHorizontalLine(GuiGraphicsExtractor ctx, int x1, int x2, int y, int color) {
         ctx.fill(x1, y, x2, y + 1, color);
     }
 

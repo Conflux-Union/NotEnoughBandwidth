@@ -1,17 +1,17 @@
 package cn.ussshenzhou.notenoughbandwidth.indextype;
 
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.Identifier;
 
 import org.jetbrains.annotations.Nullable;
 
 public class CustomPacketPrefixHelper {
 
-    public static void write(Identifier type, PacketByteBuf buf) {
+    public static void write(Identifier type, FriendlyByteBuf buf) {
         if (NamespaceIndexManager.contains(type)) {
             var index = NamespaceIndexManager.getCheckedIndex(type);
-            buf.writeVarInt(index.getLeft());
-            buf.writeVarInt(index.getRight());
+            buf.writeVarInt(index.getA());
+            buf.writeVarInt(index.getB());
         } else {
             buf.writeByte(0);
             buf.writeIdentifier(type);
@@ -19,7 +19,7 @@ public class CustomPacketPrefixHelper {
     }
 
     @Nullable
-    public static Identifier read(PacketByteBuf buf) {
+    public static Identifier read(FriendlyByteBuf buf) {
         byte firstByte = buf.getByte(buf.readerIndex());
         if (firstByte == 0) {
             buf.readVarInt();

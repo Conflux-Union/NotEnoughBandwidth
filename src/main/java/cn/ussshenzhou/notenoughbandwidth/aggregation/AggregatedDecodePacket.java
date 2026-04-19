@@ -1,108 +1,75 @@
 package cn.ussshenzhou.notenoughbandwidth.aggregation;
 
 import io.netty.buffer.ByteBuf;
-import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
-import net.minecraft.network.NetworkSide;
-import net.minecraft.network.state.NetworkState;
-import net.minecraft.network.handler.PacketCodecDispatcher;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.network.packet.PacketType;
-import net.minecraft.network.packet.c2s.common.CustomPayloadC2SPacket;
-import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.ProtocolInfo;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-
 /**
- * Wraps a single sub-packet extracted from an aggregated blob for decoding.
+ * Wraps a single sub-packet slice extracted from an aggregated blob for decoding.
  * <p>
- * Vanilla game packets are decoded through the PacketCodecDispatcher codec.
- * Custom payloads are decoded through their Fabric-registered payload codec
- * and wrapped in the appropriate CustomPayload packet for handling.
+ * Dispatch rule: if {@code type} matches a Fabric-registered custom payload,
+ * decode the payload bytes via its registered codec and wrap in the appropriate
+ * {@code *CustomPayloadPacket}. Otherwise treat the slice as a vanilla packet
+ * body prefixed with its VarInt id and let {@link ProtocolInfo#codec()} decode it.
  */
-@SuppressWarnings({"unchecked", "rawtypes"})
 public class AggregatedDecodePacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Decode");
 
     private final Identifier type;
     private final ByteBuf data;
-    private static volatile Object2IntArrayMap<Identifier> VANILLA_TO_ID;
-    private static final AtomicInteger LAST_KNOWN_SIZE = new AtomicInteger(-1);
 
     public AggregatedDecodePacket(Identifier type, ByteBuf data) {
         this.type = type;
         this.data = data;
     }
 
-    public Packet<?> decode(NetworkState<?> protocolInfo) {
-        PacketCodecDispatcher vanillaCodec = (PacketCodecDispatcher) protocolInfo.codec();
-        var idMap = getOrUpdateVanillaIdMap(vanillaCodec);
-
-        int id = idMap.getInt(type);
-        if (id != -1) {
-            return decodeVanilla(vanillaCodec, id);
+    public Packet<?> decode(ProtocolInfo<?> protocolInfo) {
+        PacketFlow side = protocolInfo.flow();
+        var registry = side == PacketFlow.CLIENTBOUND
+                ? PayloadTypeRegistryImpl.CLIENTBOUND_PLAY
+                : PayloadTypeRegistryImpl.SERVERBOUND_PLAY;
+        var payloadType = registry.get(type);
+        if (payloadType != null) {
+            return decodeCustom(payloadType, side);
         }
-        return decodeCustom(protocolInfo);
+        return decodeVanilla(protocolInfo);
     }
 
-    private Packet<?> decodeVanilla(PacketCodecDispatcher vanillaCodec, int id) {
-        var entry = (PacketCodecDispatcher.PacketType) vanillaCodec.packetTypes.get(id);
-        var codec = (PacketCodec<ByteBuf, Packet<?>>) entry.codec();
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Packet<?> decodeVanilla(ProtocolInfo<?> protocolInfo) {
+        // Mirror image of AggregatedEncodePacket.encodeVanilla: the ProtocolInfo
+        // codec reads VarInt(packet-id) + body and returns the reconstructed packet.
+        StreamCodec codec = protocolInfo.codec();
         try {
-            return codec.decode(data);
+            return (Packet<?>) codec.decode(data);
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to decode packet {}", type, e);
             return null;
         }
     }
 
-    private Packet<?> decodeCustom(NetworkState<?> protocolInfo) {
-        NetworkSide side = protocolInfo.side();
-        var registry = side == NetworkSide.CLIENTBOUND
-                ? PayloadTypeRegistryImpl.PLAY_S2C
-                : PayloadTypeRegistryImpl.PLAY_C2S;
-        var payloadType = registry.get(type);
-        if (payloadType == null) {
-            LOGGER.error("Skipped: Unknown custom payload type {} during decode", type);
-            return null;
-        }
-        var codec = (PacketCodec) payloadType.codec();
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Packet<?> decodeCustom(CustomPacketPayload.TypeAndCodec<?, ?> payloadType, PacketFlow side) {
+        StreamCodec codec = (StreamCodec) payloadType.codec();
         try {
-            CustomPayload payload = (CustomPayload) codec.decode(data);
-            if (side == NetworkSide.CLIENTBOUND) {
-                return new CustomPayloadS2CPacket(payload);
-            } else {
-                return new CustomPayloadC2SPacket(payload);
+            CustomPacketPayload payload = (CustomPacketPayload) codec.decode(data);
+            if (side == PacketFlow.CLIENTBOUND) {
+                return new ClientboundCustomPayloadPacket(payload);
             }
+            return new ServerboundCustomPayloadPacket(payload);
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to decode custom payload {}", type, e);
             return null;
         }
-    }
-
-    private static Object2IntArrayMap<Identifier> getOrUpdateVanillaIdMap(PacketCodecDispatcher vanillaCodec) {
-        int currentSize = vanillaCodec.typeToIndex.size();
-        if (currentSize == LAST_KNOWN_SIZE.get()) {
-            var cached = VANILLA_TO_ID;
-            if (cached != null) return cached;
-        }
-        // Build a fresh snapshot — no mutation of shared state.
-        var fresh = new Object2IntArrayMap<Identifier>();
-        fresh.defaultReturnValue(-1);
-        vanillaCodec.typeToIndex.forEach((t, i) -> {
-            if (t instanceof PacketType<?> pt) {
-                fresh.put(pt.id(), (int) i);
-            }
-        });
-        VANILLA_TO_ID = fresh;
-        LAST_KNOWN_SIZE.set(currentSize);
-        return fresh;
     }
 
     public Identifier getType() {

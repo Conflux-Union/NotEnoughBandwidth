@@ -1,6 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
-import net.minecraft.network.ClientConnection;
+import net.minecraft.network.Connection;
 
 import java.util.Collections;
 import java.util.Set;
@@ -15,18 +15,18 @@ import java.util.WeakHashMap;
  * Backed by a WeakHashMap so dead connections are GC'd automatically.
  */
 public class NebConnectionRegistry {
-    private static final Set<ClientConnection> ENABLED =
+    private static final Set<Connection> ENABLED =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
-    public static void markEnabled(ClientConnection connection) {
+    public static void markEnabled(Connection connection) {
         ENABLED.add(connection);
     }
 
-    public static void markDisabled(ClientConnection connection) {
+    public static void markDisabled(Connection connection) {
         ENABLED.remove(connection);
     }
 
-    public static boolean isEnabled(ClientConnection connection) {
+    public static boolean isEnabled(Connection connection) {
         return ENABLED.contains(connection);
     }
 }

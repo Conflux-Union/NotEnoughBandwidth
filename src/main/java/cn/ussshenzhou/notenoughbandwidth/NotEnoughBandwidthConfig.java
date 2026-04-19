@@ -5,7 +5,7 @@ import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.config.TConfig;
 import cn.ussshenzhou.notenoughbandwidth.network.*;
 import com.google.gson.annotations.Expose;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.Mth;
 
 import java.util.HashSet;
 import java.util.UUID;
@@ -56,10 +56,10 @@ public class NotEnoughBandwidthConfig implements TConfig {
     }
 
     public int getCompressionLevel() {
-        return MathHelper.clamp(compressionLevel, 1, 19);
+        return Mth.clamp(compressionLevel, 1, 19);
     }
 
     public int getContextLevel() {
-        return MathHelper.clamp(contextLevel, 21, 25);
+        return Mth.clamp(contextLevel, 21, 25);
     }
 }

@@ -10,7 +10,7 @@ import cn.ussshenzhou.notenoughbandwidth.stat.SystemTrafficMonitor;
 import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 public class NotEnoughBandwidthClient implements ClientModInitializer {
     @Override
@@ -20,9 +20,9 @@ public class NotEnoughBandwidthClient implements ClientModInitializer {
         IndexSyncHandler.registerClient();
         SystemTrafficMonitor.init();
 
-        ChunkCacheManager.setGameDir(MinecraftClient.getInstance().runDirectory.toPath());
+        ChunkCacheManager.setGameDir(Minecraft.getInstance().gameDirectory.toPath());
 
-        // On server switch (Velocity), the same ClientConnection is reused but the
+        // On server switch (Velocity), the same Connection is reused but the
         // backend server changes. Disable NEB and discard stale buffered packets so
         // everything flows vanilla until the new server's handshake re-enables NEB.
         ClientPlayConnectionEvents.INIT.register((handler, client) -> {

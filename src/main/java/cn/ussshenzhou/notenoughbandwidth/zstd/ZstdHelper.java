@@ -5,26 +5,26 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import net.minecraft.network.ClientConnection;
+import net.minecraft.network.Connection;
 
 import java.util.concurrent.ExecutionException;
 
 public class ZstdHelper {
 
-    private static final Cache<ClientConnection, Context> ZSTD_CONTEXT_CACHE = CacheBuilder.newBuilder()
+    private static final Cache<Connection, Context> ZSTD_CONTEXT_CACHE = CacheBuilder.newBuilder()
             .weakKeys()
-            .removalListener((RemovalListener<ClientConnection, Context>) notification -> {
+            .removalListener((RemovalListener<Connection, Context>) notification -> {
                 if (notification.getValue() != null) {
                     notification.getValue().close();
                 }
             })
             .build();
 
-    public static ByteBuf compress(ClientConnection connection, ByteBuf raw) {
+    public static ByteBuf compress(Connection connection, ByteBuf raw) {
         return Unpooled.wrappedBuffer(get(connection).compress(raw.nioBuffer()));
     }
 
-    public static ByteBuf decompress(ClientConnection connection, ByteBuf compressed, int originalSize) {
+    public static ByteBuf decompress(Connection connection, ByteBuf compressed, int originalSize) {
         try {
             if (compressed.isDirect()) {
                 return Unpooled.wrappedBuffer(get(connection).decompress(compressed.nioBuffer(), originalSize));
@@ -42,7 +42,7 @@ public class ZstdHelper {
         }
     }
 
-    private static Context get(ClientConnection connection) {
+    private static Context get(Connection connection) {
         try {
             return ZSTD_CONTEXT_CACHE.get(connection, () -> new Context(DictionaryManager.getDict()));
         } catch (ExecutionException e) {
@@ -53,9 +53,9 @@ public class ZstdHelper {
     /**
      * Evict the cached Zstd context for a connection so the next call recreates
      * it with the current dictionary. Required on proxy server switches where
-     * the same ClientConnection is reused with a different backend.
+     * the same Connection is reused with a different backend.
      */
-    public static void evict(ClientConnection connection) {
+    public static void evict(Connection connection) {
         ZSTD_CONTEXT_CACHE.invalidate(connection);
     }
 }

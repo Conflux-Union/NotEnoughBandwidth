@@ -2,9 +2,9 @@ package cn.ussshenzhou.notenoughbandwidth.stat;
 
 import cn.ussshenzhou.notenoughbandwidth.network.StatQueryPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.*;
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.chunkCacheSavedBytesServer;
@@ -44,7 +44,7 @@ public class StatScreen extends Screen {
     private double scrollOffset = 0;
 
     public StatScreen() {
-        super(Text.empty());
+        super(Component.empty());
     }
 
     @Override
@@ -157,33 +157,33 @@ public class StatScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        super.extractRenderState(context, mouseX, mouseY, delta);
         context.fill(0, 0, width, height, 0x80000000);
-        var tr = this.textRenderer;
+        var tr = this.font;
 
-        context.getMatrices().pushMatrix();
-        context.getMatrices().translate(0, (float) -scrollOffset);
+        context.pose().pushMatrix();
+        context.pose().translate(0, (float) -scrollOffset);
 
-        // Text stats
-        context.drawText(tr, client, 10, 10, 0xFFFFFFFF, true);
-        context.drawText(tr, actual, 10, 30, 0xFFFFFFFF, true);
-        context.drawText(tr, actualC, 10, 40, 0xFFFFFFFF, true);
-        context.drawText(tr, raw, 10, 60, 0xFFFFFFFF, true);
-        context.drawText(tr, rawC, 10, 70, 0xFFFFFFFF, true);
-        context.drawText(tr, ratioC, 10, 90, 0xFFFFFFFF, true);
+        // Component stats
+        context.text(tr, client, 10, 10, 0xFFFFFFFF, true);
+        context.text(tr, actual, 10, 30, 0xFFFFFFFF, true);
+        context.text(tr, actualC, 10, 40, 0xFFFFFFFF, true);
+        context.text(tr, raw, 10, 60, 0xFFFFFFFF, true);
+        context.text(tr, rawC, 10, 70, 0xFFFFFFFF, true);
+        context.text(tr, ratioC, 10, 90, 0xFFFFFFFF, true);
 
-        context.drawText(tr, server, 10, 120, 0xFFFFFFFF, true);
-        context.drawText(tr, actual, 10, 140, 0xFFFFFFFF, true);
-        context.drawText(tr, actualS, 10, 150, 0xFFFFFFFF, true);
-        context.drawText(tr, raw, 10, 170, 0xFFFFFFFF, true);
-        context.drawText(tr, rawS, 10, 180, 0xFFFFFFFF, true);
-        context.drawText(tr, ratioS, 10, 200, 0xFFFFFFFF, true);
+        context.text(tr, server, 10, 120, 0xFFFFFFFF, true);
+        context.text(tr, actual, 10, 140, 0xFFFFFFFF, true);
+        context.text(tr, actualS, 10, 150, 0xFFFFFFFF, true);
+        context.text(tr, raw, 10, 170, 0xFFFFFFFF, true);
+        context.text(tr, rawS, 10, 180, 0xFFFFFFFF, true);
+        context.text(tr, ratioS, 10, 200, 0xFFFFFFFF, true);
 
-        context.drawText(tr, dictStatus, 10, 230, 0xFFFFFFFF, true);
-        context.drawText(tr, chunkCacheStatus, 10, 250, 0xFFFFFFFF, true);
-        context.drawText(tr, clientNicStatus, 10, 270, 0xFFFFFFFF, true);
-        context.drawText(tr, serverNicStatus, 10, 290, 0xFFFFFFFF, true);
+        context.text(tr, dictStatus, 10, 230, 0xFFFFFFFF, true);
+        context.text(tr, chunkCacheStatus, 10, 250, 0xFFFFFFFF, true);
+        context.text(tr, clientNicStatus, 10, 270, 0xFFFFFFFF, true);
+        context.text(tr, serverNicStatus, 10, 290, 0xFFFFFFFF, true);
 
         // Charts — side by side, with extra spacing below text
         int chartY = 342;
@@ -191,16 +191,16 @@ public class StatScreen extends Screen {
         int gap = 10;
         int chartW = (this.width - 30) / 2;
 
-        context.drawText(tr, "Client", 10, chartY - 22, 0xFF88CCFF, true);
+        context.text(tr, "Client", 10, chartY - 22, 0xFF88CCFF, true);
         LineChart.render(context, tr, 10, chartY, chartW, chartH,
                 CLIENT_CHART_SERIES, CHART_COLORS, CLIENT_CHART_LABELS);
 
         int rightX = 10 + chartW + gap;
-        context.drawText(tr, "Server", rightX, chartY - 22, 0xFFFFCC88, true);
+        context.text(tr, "Server", rightX, chartY - 22, 0xFFFFCC88, true);
         LineChart.render(context, tr, rightX, chartY, chartW, chartH,
                 SERVER_CHART_SERIES, CHART_COLORS, SERVER_CHART_LABELS);
 
-        context.getMatrices().popMatrix();
+        context.pose().popMatrix();
 
         // Scroll indicator when content overflows
         int maxScroll = Math.max(0, CONTENT_HEIGHT - this.height);

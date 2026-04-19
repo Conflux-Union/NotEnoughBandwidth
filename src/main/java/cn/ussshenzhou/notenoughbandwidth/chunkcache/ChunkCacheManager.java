@@ -4,7 +4,7 @@ import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.network.ClientConnection;
+import net.minecraft.network.Connection;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +45,7 @@ public class ChunkCacheManager {
     // Separate lock object so server-side bloom filter operations don't contend
     // with client-side DB operations (which hold the class monitor).
     private static final Object SERVER_LOCK = new Object();
-    private static final WeakHashMap<ClientConnection, BloomFilter<Long>> SERVER_BLOOM_FILTERS =
+    private static final WeakHashMap<Connection, BloomFilter<Long>> SERVER_BLOOM_FILTERS =
             new WeakHashMap<>();
 
     // -------------------------------------------------------------------------
@@ -182,14 +182,14 @@ public class ChunkCacheManager {
     // -------------------------------------------------------------------------
 
     /** Stores the bloom filter received from the client for a given connection. */
-    public static void setServerBloomFilter(ClientConnection connection, byte[] bloomFilterBytes) {
+    public static void setServerBloomFilter(Connection connection, byte[] bloomFilterBytes) {
         try {
             BloomFilter<Long> filter = BloomFilter.readFrom(
                     new ByteArrayInputStream(bloomFilterBytes), Funnels.longFunnel());
             synchronized (SERVER_LOCK) {
                 SERVER_BLOOM_FILTERS.put(connection, filter);
             }
-            LOGGER.debug("Stored bloom filter for {}", connection.getAddress());
+            LOGGER.debug("Stored bloom filter for {}", connection.getRemoteAddress());
         } catch (IOException e) {
             LOGGER.error("Failed to deserialize client bloom filter", e);
         }
@@ -199,7 +199,7 @@ public class ChunkCacheManager {
      * Returns true if the client has likely cached a chunk with this hash.
      * Returns false conservatively when no bloom filter is available.
      */
-    public static boolean serverMightHaveChunk(ClientConnection connection, long hash) {
+    public static boolean serverMightHaveChunk(Connection connection, long hash) {
         BloomFilter<Long> filter;
         synchronized (SERVER_LOCK) {
             filter = SERVER_BLOOM_FILTERS.get(connection);
@@ -207,7 +207,7 @@ public class ChunkCacheManager {
         return filter != null && filter.mightContain(hash);
     }
 
-    public static void removeServerBloomFilter(ClientConnection connection) {
+    public static void removeServerBloomFilter(Connection connection) {
         synchronized (SERVER_LOCK) {
             SERVER_BLOOM_FILTERS.remove(connection);
         }
