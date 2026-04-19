@@ -1,0 +1,7 @@
+scenario,mode,total_bytes,ratio_vs_raw,wall_ms
+entities,neb,4160293,0.1958,59929
+entities,raw,21250477,1.0000,59923
+entities,zlib,6092538,0.2867,59892
+roam,neb,10778678,0.1223,59925
+roam,raw,88100211,1.0000,59916
+roam,zlib,14298065,0.1623,59889

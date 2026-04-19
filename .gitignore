@@ -20,6 +20,8 @@ Thumbs.db
 
 # Runtime
 run/
+run-bench/
+run-bench-client/
 logs/
 reference-neoforge/
 

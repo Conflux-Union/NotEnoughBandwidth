@@ -22,7 +22,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add("minecraft:player_info_remove");
     }};
     public boolean debugLog = false;
-    public int compressionLevel = 6;
+    public int compressionLevel = 12;
     public int contextLevel = 23;
     public int dccSizeLimit = 60;
     public int dccDistance = 5;

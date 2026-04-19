@@ -16,6 +16,31 @@ repositories {
 
 loom {
     accessWidenerPath = file("src/main/resources/neb-fabric.accesswidener")
+
+    runs {
+        // Server-side benchmark run: drives the scenario + writes CSV.
+        benchmark {
+            server()
+            runDir "run-bench"
+            ideConfigGenerated false
+            property "neb.benchMode", project.findProperty("neb.benchMode") ?: ""
+            property "neb.benchScenario", project.findProperty("neb.benchScenario") ?: ""
+            property "neb.benchOutput", project.findProperty("neb.benchOutput") ?: ""
+            property "neb.benchTicks", project.findProperty("neb.benchTicks") ?: "1200"
+            property "neb.disableMod", project.findProperty("neb.disableMod") ?: "false"
+            property "fabric.log.disableAnsi", "true"
+        }
+        // Client-side benchmark run: real MinecraftClient, auto-joins the bench server.
+        benchmarkClient {
+            client()
+            runDir "run-bench-client"
+            ideConfigGenerated false
+            property "neb.benchClientAutoJoin", project.findProperty("neb.benchClientAutoJoin") ?: ""
+            property "neb.benchMode", project.findProperty("neb.benchMode") ?: ""
+            property "neb.disableMod", project.findProperty("neb.disableMod") ?: "false"
+            property "fabric.log.disableAnsi", "true"
+        }
+    }
 }
 
 dependencies {
@@ -67,4 +92,183 @@ publishing {
     }
     repositories {
     }
+}
+
+// -----------------------------------------------------------------------------
+// Benchmark orchestrator: 3 modes x 2 scenarios = 6 run pairs.
+// Each pair spawns TWO child JVMs:
+//   - server JVM: runs the dedicated server + scenario driver + wire byte counter.
+//   - client JVM: runs real MinecraftClient, auto-joins via BenchClientAutoJoin.
+// Using the real client (not a hand-rolled protocol proxy) is the whole point —
+// traffic reflects what an actual player produces.
+// -----------------------------------------------------------------------------
+tasks.register('benchmark') {
+    group = 'verification'
+    description = 'Run the NEB CI bandwidth benchmark (3 modes x 2 scenarios).'
+    dependsOn build
+    doLast {
+        def modes = (project.findProperty('neb.benchModes') ?: 'neb,zlib,raw').split(',')
+        def scenarios = (project.findProperty('neb.benchScenarios') ?: 'roam,entities').split(',')
+        def outDir = project.file("build/benchmark")
+        outDir.mkdirs()
+        def runDir = project.file("run-bench")
+        def runDirClient = project.file("run-bench-client")
+        def wrapper = org.gradle.internal.os.OperatingSystem.current().isWindows()
+                ? 'gradlew.bat' : './gradlew'
+        def rng = new Random()
+        scenarios.each { scenario ->
+            modes.each { mode ->
+                def csv = new File(outDir, "${scenario}-${mode}.csv").absolutePath
+                int port = 30000 + rng.nextInt(5000)
+                boolean disableMod = (mode != 'neb')
+                logger.lifecycle("[benchmark] ${scenario} / ${mode} -> ${csv} (port ${port}, disableMod=${disableMod})")
+
+                // Fresh world state for every run. Only wipe subdirs (not runDir itself)
+                // so we don't race with filesystem observers and end up with a trashed cwd.
+                runDir.mkdirs()
+                runDirClient.mkdirs()
+                project.delete(new File(runDir, 'world'))
+                project.delete(new File(runDir, 'world_nether'))
+                project.delete(new File(runDir, 'world_the_end'))
+                project.delete(new File(runDir, 'config'))
+                // Wipe client state that could affect handshake between matrix cells
+                // (stale servers.dat, options.txt overrides, cached chunk DB from a prior NEB run).
+                project.delete(new File(runDirClient, 'saves'))
+                project.delete(new File(runDirClient, 'config'))
+                project.delete(new File(runDirClient, 'servers.dat'))
+                project.delete(new File(runDirClient, 'servers.dat_old'))
+                project.delete(new File(runDirClient, 'neb-chunk-cache'))
+                new File(runDir, 'eula.txt').text = "eula=true\n"
+                def threshold = (mode == 'zlib') ? '256' : '-1'
+                new File(runDir, 'server.properties').text = """\
+server-port=${port}
+online-mode=false
+network-compression-threshold=${threshold}
+level-name=world
+level-seed=12345
+level-type=minecraft\\:normal
+spawn-protection=0
+view-distance=10
+simulation-distance=10
+allow-flight=true
+enable-command-block=false
+motd=NEB Benchmark
+max-players=2
+enforce-whitelist=false
+white-list=false
+generate-structures=false
+sync-chunk-writes=false
+enable-jmx-monitoring=false
+enable-status=false
+enable-query=false
+rcon.port=0
+query.port=0
+broadcast-console-to-ops=false
+broadcast-rcon-to-ops=false
+""".stripIndent()
+
+                // Start the server JVM first. --no-daemon because loom's default run tasks
+                // hand off to a daemon and return rc=0 immediately, detaching the server
+                // from our waitFor. Explicit stdout pump on a bg thread; inheritIO doesn't
+                // reliably stream through nested gradle.
+                def ticks = project.findProperty('neb.benchTicks') ?: '1200'
+                def serverCmd = [wrapper, 'runBenchmark',
+                                 "-Pneb.benchMode=${mode}",
+                                 "-Pneb.benchScenario=${scenario}",
+                                 "-Pneb.benchOutput=${csv}",
+                                 "-Pneb.benchTicks=${ticks}",
+                                 "-Pneb.disableMod=${disableMod}",
+                                 '--no-daemon', '--console=plain']
+                def srvPb = new ProcessBuilder(serverCmd as String[])
+                srvPb.directory(project.projectDir)
+                srvPb.redirectErrorStream(true)
+                def srvProc = srvPb.start()
+                def srvPump = new Thread({
+                    srvProc.inputStream.withReader('UTF-8') { reader ->
+                        String line
+                        while ((line = reader.readLine()) != null) {
+                            println "  S│ ${line}"
+                        }
+                    }
+                } as Runnable, "bench-srv-stdout")
+                srvPump.daemon = true
+                srvPump.start()
+
+                // Wait for TCP port to accept connections before launching the client.
+                // Server startup takes ~15-25s on CI. Without this gate the client would
+                // give up on connect before the server finishes world generation.
+                def srvReady = false
+                def readyDeadline = System.currentTimeMillis() + 300_000
+                while (System.currentTimeMillis() < readyDeadline) {
+                    try {
+                        def sock = new Socket()
+                        sock.connect(new java.net.InetSocketAddress('127.0.0.1', port), 1000)
+                        sock.close()
+                        srvReady = true
+                        break
+                    } catch (Exception ignored) {
+                        // not yet — if the server process died, bail out early
+                        if (!srvProc.isAlive()) break
+                        Thread.sleep(500)
+                    }
+                }
+                if (!srvReady) {
+                    srvProc.destroyForcibly()
+                    throw new GradleException("Server for ${scenario}/${mode} never opened port ${port}")
+                }
+                logger.lifecycle("[benchmark] ${scenario}/${mode}: server listening, launching client")
+
+                def clientCmd = [wrapper, 'runBenchmarkClient',
+                                 "-Pneb.benchMode=${mode}",
+                                 "-Pneb.benchClientAutoJoin=127.0.0.1:${port}",
+                                 "-Pneb.disableMod=${disableMod}",
+                                 '--no-daemon', '--console=plain']
+                def cliPb = new ProcessBuilder(clientCmd as String[])
+                cliPb.directory(project.projectDir)
+                cliPb.redirectErrorStream(true)
+                def cliProc = cliPb.start()
+                def cliPump = new Thread({
+                    cliProc.inputStream.withReader('UTF-8') { reader ->
+                        String line
+                        while ((line = reader.readLine()) != null) {
+                            println "  C│ ${line}"
+                        }
+                    }
+                } as Runnable, "bench-cli-stdout")
+                cliPump.daemon = true
+                cliPump.start()
+
+                // Server exits when scenario completes (finishAndHalt -> server.stop).
+                // That sends DisconnectS2CPacket to client; client then scheduleStop()s itself.
+                int srvRc = srvProc.waitFor()
+                logger.lifecycle("[benchmark] ${scenario}/${mode}: server exited rc=${srvRc}")
+
+                // Give the client up to 60s to shut down cleanly after disconnect.
+                // If it doesn't, kill — we've got our CSV, don't block the matrix.
+                long clientDeadline = System.currentTimeMillis() + 60_000
+                while (cliProc.isAlive() && System.currentTimeMillis() < clientDeadline) {
+                    Thread.sleep(500)
+                }
+                if (cliProc.isAlive()) {
+                    logger.warn("[benchmark] ${scenario}/${mode}: client didn't exit; killing")
+                    cliProc.destroyForcibly()
+                }
+                int cliRc = cliProc.waitFor()
+                logger.lifecycle("[benchmark] ${scenario}/${mode}: client exited rc=${cliRc}")
+
+                if (srvRc != 0) {
+                    throw new GradleException("runBenchmark ${scenario}/${mode} server exited ${srvRc}")
+                }
+            }
+        }
+        logger.lifecycle("[benchmark] done. CSVs in ${outDir}")
+    }
+}
+
+// Convenience: plot CSVs after a benchmark run.
+tasks.register('benchmarkPlot', Exec) {
+    group = 'verification'
+    description = 'Render benchmark CSVs to PNG/PDF via scripts/plot_benchmark.py.'
+    workingDir project.projectDir
+    commandLine 'python3', 'scripts/plot_benchmark.py', 'build/benchmark'
 }

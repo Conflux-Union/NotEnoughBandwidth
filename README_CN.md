@@ -20,6 +20,25 @@ NEB 在尽可能不影响模组和玩家正常使用的前提下，通过多种�
 
 游戏内按 **Alt+N** 查看实时流量统计。
 
+## 基准测试
+
+NEB / 原版 zlib / 原版 raw 三种配置在 roam（跑图）、entities（多实体）两种场景下各运行 60 秒的实测对比,Zstd level 12,本地回环双 JVM。复现:`./gradlew benchmark` + `python3 scripts/plot_benchmark.py build/benchmark`。
+
+![总带宽对比](docs/benchmark/summary_bars.png)
+
+![roam 累积曲线](docs/benchmark/roam_timeseries.png)
+
+![entities 累积曲线](docs/benchmark/entities_timeseries.png)
+
+<details>
+<summary>瞬时吞吐量散点图（点击展开）</summary>
+
+![roam 瞬时带宽](docs/benchmark/roam_throughput.png)
+
+![entities 瞬时带宽](docs/benchmark/entities_throughput.png)
+
+</details>
+
 ## 主要功能
 
 ### 精简包头
@@ -99,7 +118,7 @@ NEB 在尽可能不影响模组和玩家正常使用的前提下，通过多种�
 
 > **客户端和服务端分别独立生效。**
 
-Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好，但 CPU 占用也越高。
+Zstd 压缩等级（整数 1-19），默认为 **12**。数值越高压缩率越好，但 CPU 占用也越高。基准测试下 level 12 是压缩率与 CPU 成本的平衡点；若服务端 CPU 吃紧可降至 6,若 CPU 有余力可升至 19 进一步压榨带宽。
 
 ### contextLevel
 

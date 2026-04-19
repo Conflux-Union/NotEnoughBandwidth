@@ -21,6 +21,25 @@ In tests conducted in a Vanilla environment, the server outbound traffic was red
 
 Press **N** in-game to view the network traffic status.
 
+## Benchmark
+
+Reproducible head-to-head (NEB vs vanilla zlib vs vanilla raw) over two scenarios, 60 s per cell, on a dedicated loopback setup. Zstd level 12. Full reproduction: `./gradlew benchmark` + `python3 scripts/plot_benchmark.py build/benchmark`.
+
+![bandwidth summary](docs/benchmark/summary_bars.png)
+
+![roam timeseries](docs/benchmark/roam_timeseries.png)
+
+![entities timeseries](docs/benchmark/entities_timeseries.png)
+
+<details>
+<summary>Instantaneous throughput scatter (click to expand)</summary>
+
+![roam throughput](docs/benchmark/roam_throughput.png)
+
+![entities throughput](docs/benchmark/entities_throughput.png)
+
+</details>
+
 ## Main Features
 
 ### Compact Packet Header
@@ -100,7 +119,7 @@ The blacklist for compatibility mode. Packets listed here will be skipped by NEB
 
 > **Works independently on client and server.**
 
-The Zstd compression level (integer 1-19). Default is 6. Higher values produce better compression but use more CPU.
+The Zstd compression level (integer 1-19). Default is 12. Higher values produce better compression but use more CPU. Level 12 is the balanced point between compression ratio and CPU cost in our testing; drop to 6 if your server CPU is the bottleneck, raise to 19 if CPU is idle and you want to squeeze every last byte.
 
 ### contextLevel
 
