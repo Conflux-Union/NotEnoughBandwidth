@@ -4,6 +4,7 @@ import cn.ussshenzhou.notenoughbandwidth.ModConstants;
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.indextype.CustomPacketPrefixHelper;
+import cn.ussshenzhou.notenoughbandwidth.stat.PacketTypeStatManager;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
@@ -38,6 +39,7 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     }
 
     private int bakedSize;
+    private int innerBlobSize;
 
     // ---- encode side ----
     private final ArrayList<AggregatedEncodePacket> packetsToEncode;
@@ -53,9 +55,17 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     }
 
     public void write(RegistryFriendlyByteBuf buffer) {
+        int blobStartIdx = buffer.writerIndex();
         var rawBuf = new RegistryFriendlyByteBuf(ByteBufAllocator.DEFAULT.buffer(), buffer.registryAccess());
         try {
-            packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
+            int[] subRawSizes = new int[packetsToEncode.size()];
+            int prevWriterIdx = rawBuf.writerIndex();
+            for (int i = 0; i < packetsToEncode.size(); i++) {
+                encodeSubPacket(rawBuf, packetsToEncode.get(i));
+                int newIdx = rawBuf.writerIndex();
+                subRawSizes[i] = newIdx - prevWriterIdx;
+                prevWriterIdx = newIdx;
+            }
 
             int rawSize = rawBuf.readableBytes();
             if (DictionaryManager.isSampling()) {
@@ -69,13 +79,13 @@ public class PacketAggregationPacket implements CustomPacketPayload {
                 buffer.writeVarInt(rawSize);
                 var compressedBuf = new FriendlyByteBuf(ZstdHelper.compress(connection, rawBuf));
                 try {
+                    this.bakedSize = compressedBuf.readableBytes();
                     if (ConfigHelper.getConfigRead(NotEnoughBandwidthConfig.class).debugLog) {
                         LOGGER.debug("Aggregated and compressed: {} -> {} bytes ({} %)",
-                                rawSize, compressedBuf.readableBytes(),
-                                String.format("%.2f", 100f * compressedBuf.readableBytes() / rawSize));
+                                rawSize, this.bakedSize,
+                                String.format("%.2f", 100f * this.bakedSize / rawSize));
                     }
                     buffer.writeBytes(compressedBuf);
-                    this.bakedSize = compressedBuf.readableBytes();
                 } finally {
                     compressedBuf.release();
                 }
@@ -84,8 +94,27 @@ public class PacketAggregationPacket implements CustomPacketPayload {
                 this.bakedSize = rawSize;
             }
             SimpleStatManager.outRaw(rawSize);
+            this.innerBlobSize = buffer.writerIndex() - blobStartIdx;
+            recordPerTypeOut(subRawSizes, rawSize, this.innerBlobSize);
         } finally {
             rawBuf.release();
+        }
+    }
+
+    private void recordPerTypeOut(int[] subRawSizes, int rawSize, int bakedSize) {
+        if (rawSize <= 0 || subRawSizes.length == 0) return;
+        var flow = protocolInfo.flow();
+        long allocatedBaked = 0;
+        for (int i = 0; i < subRawSizes.length; i++) {
+            long subBaked;
+            if (i == subRawSizes.length - 1) {
+                subBaked = bakedSize - allocatedBaked;
+                if (subBaked < 0) subBaked = 0;
+            } else {
+                subBaked = (long) Math.floor((double) subRawSizes[i] * bakedSize / rawSize);
+                allocatedBaked += subBaked;
+            }
+            PacketTypeStatManager.record(flow, packetsToEncode.get(i).type, subRawSizes[i], subBaked);
         }
     }
 
@@ -107,6 +136,7 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     public PacketAggregationPacket(RegistryFriendlyByteBuf buffer) {
         this.protocolInfo = null;
         this.packetsToEncode = null;
+        this.innerBlobSize = buffer.readableBytes();
         this.data = new RegistryFriendlyByteBuf(buffer.retainedDuplicate(), buffer.registryAccess());
         buffer.readerIndex(buffer.writerIndex());
     }
@@ -136,22 +166,32 @@ public class PacketAggregationPacket implements CustomPacketPayload {
         }
         var inboundProtocol = decoder.protocolInfo;
         var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
+        var subRawSizes = new ArrayList<Integer>();
+        int totalSubRaw = 0;
         try {
+            int prevReaderIdx = raw.readerIndex();
             while (raw.readableBytes() > 0) {
                 var type = CustomPacketPrefixHelper.read(raw);
                 var size = raw.readVarInt();
                 var subData = new RegistryFriendlyByteBuf(raw.readRetainedSlice(size), data.registryAccess());
+                int newIdx = raw.readerIndex();
+                int subRaw = newIdx - prevReaderIdx;
+                prevReaderIdx = newIdx;
                 if (type == null) {
                     LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
                     subData.release();
                     continue;
                 }
                 packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+                subRawSizes.add(subRaw);
+                totalSubRaw += subRaw;
             }
         } finally {
             data.release();
             raw.release();
         }
+
+        recordPerTypeIn(inboundProtocol.flow(), packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
 
         for (var sub : packetsToHandle) {
             try {
@@ -167,6 +207,28 @@ public class PacketAggregationPacket implements CustomPacketPayload {
             } finally {
                 sub.getData().release();
             }
+        }
+    }
+
+    private static void recordPerTypeIn(net.minecraft.network.protocol.PacketFlow flow,
+                                        ArrayList<AggregatedDecodePacket> sub,
+                                        ArrayList<Integer> subRawSizes,
+                                        int totalSubRaw,
+                                        int bundleBaked) {
+        int n = sub.size();
+        if (n == 0 || totalSubRaw <= 0) return;
+        long allocatedBaked = 0;
+        for (int i = 0; i < n; i++) {
+            int subRaw = subRawSizes.get(i);
+            long subBaked;
+            if (i == n - 1) {
+                subBaked = bundleBaked - allocatedBaked;
+                if (subBaked < 0) subBaked = 0;
+            } else {
+                subBaked = (long) Math.floor((double) subRaw * bundleBaked / totalSubRaw);
+                allocatedBaked += subBaked;
+            }
+            PacketTypeStatManager.record(flow, sub.get(i).getType(), subRaw, subBaked);
         }
     }
 

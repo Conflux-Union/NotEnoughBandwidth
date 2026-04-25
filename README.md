@@ -1,6 +1,6 @@
 # Not Enough Bandwidth (NEB) — Fabric Port
 
-**Fabric mod for Minecraft 1.21.6** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, and persistent client-side chunk deduplication.
+**Fabric mod for Minecraft 26.1** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, persistent client-side chunk deduplication, and chunk light stripping.
 
 > **Need support or a port for another version?**
 > Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
@@ -68,6 +68,10 @@ In Vanilla, when a player moves, the server instructs the client to immediately 
 
 Caches chunk data persistently on the client side using a local LevelDB database, keyed by a 64-bit content hash. On each connection, the client sends a Bloom Filter of all cached chunk hashes to the server. When the server is about to send a chunk whose hash is in the filter, it sends only the 20-byte hash instead of the full packet (~10–20 KB). The client loads the chunk from its local database. On a Bloom Filter false positive, the client requests the full data as a fallback. The Bloom Filter is refreshed every 64 newly cached chunks so the optimization takes effect within the same session.
 
+### Chunk Light Stripping
+
+When enabled, the server omits sky/block light nibble layers from chunk packets and the client recomputes full-chunk lighting after the chunk loads. This is useful for measuring and reducing the light-data share of chunk transmission without changing chunk block or block-entity data.
+
 ## Configuration
 
 Modify the configuration file at `config/NotEnoughBandwidthConfig.json`.
@@ -120,11 +124,17 @@ Whether to enable the Persistent Chunk Cache. Default is `true`.
 
 Maximum size of the local chunk cache database in megabytes. Default is `2048` (2 GB).
 
+### lightStripEnabled
+
+> **Client and server.**
+
+Whether to strip chunk light data from server chunk packets and recompute it on the client. Default is `false`.
+
 ## Installation
 
 Requires:
-- Minecraft 1.21.6
-- Fabric Loader >= 0.18.0
+- Minecraft 26.1
+- Fabric Loader >= 0.18.4
 - Fabric API
 
 **Both client and server must install NEB.** When a client without NEB connects, the server falls back to vanilla behavior for that connection.

@@ -22,6 +22,8 @@ import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.BitSet;
+
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.LOCAL;
 
 public class ModNetworking {
@@ -70,8 +72,11 @@ public class ModNetworking {
             world.getServer().execute(() -> {
                 var chunk = world.getChunkSource().getChunkNow(pos.x(), pos.z());
                 if (chunk != null) {
+                    BitSet lightMask = cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig.get().lightStripEnabled
+                            ? new BitSet()
+                            : null;
                     player.connection.send(
-                            new ClientboundLevelChunkWithLightPacket(chunk, world.getLightEngine(), null, null));
+                            new ClientboundLevelChunkWithLightPacket(chunk, world.getLightEngine(), lightMask, lightMask));
                     LOGGER.debug("Resent chunk ({},{}) after cache miss for {}",
                             pos.x(), pos.z(), player.getName().getString());
                 } else {

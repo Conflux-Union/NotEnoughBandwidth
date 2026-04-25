@@ -18,6 +18,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.BitSet;
+
 @Mixin(PlayerChunkSender.class)
 public class ChunkDataSenderMixin {
 
@@ -35,15 +37,24 @@ public class ChunkDataSenderMixin {
                                                LevelChunk chunk,
                                                CallbackInfo ci) {
         var cfg = NotEnoughBandwidthConfig.get();
-        if (!cfg.chunkCacheEnabled) return;
+        if (!cfg.chunkCacheEnabled && !cfg.lightStripEnabled) return;
 
         Connection connection = handler.connection;
         if (!NebConnectionRegistry.isEnabled(connection)) return;
+        BitSet lightMask = cfg.lightStripEnabled ? new BitSet() : null;
 
         // Build the packet once. On hit we skip the vanilla path entirely;
         // on miss we send this packet ourselves instead of letting vanilla
         // construct a second identical one.
-        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(chunk, world.getLightEngine(), null, null);
+        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(
+                chunk, world.getLightEngine(), lightMask, lightMask);
+
+        if (!cfg.chunkCacheEnabled) {
+            handler.send(packet);
+            ci.cancel();
+            return;
+        }
+
         ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(), world.registryAccess(),
                 "SERVER", chunk.getPos().x(), chunk.getPos().z());
 

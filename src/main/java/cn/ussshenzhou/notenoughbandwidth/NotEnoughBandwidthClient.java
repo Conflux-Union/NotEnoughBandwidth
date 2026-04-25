@@ -1,6 +1,7 @@
 package cn.ussshenzhou.notenoughbandwidth;
 
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
+import cn.ussshenzhou.notenoughbandwidth.bench.BenchClientAutoJoin;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncHandler;
 import cn.ussshenzhou.notenoughbandwidth.network.ModNetworking;
@@ -15,9 +16,14 @@ import net.minecraft.client.Minecraft;
 public class NotEnoughBandwidthClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
+        if (Boolean.getBoolean("neb.disableMod")) {
+            BenchClientAutoJoin.maybeInstall();
+            return;
+        }
         ModKey.register();
         ModNetworking.registerClient();
         IndexSyncHandler.registerClient();
+        BenchClientAutoJoin.maybeInstall();
         SystemTrafficMonitor.init();
 
         ChunkCacheManager.setGameDir(Minecraft.getInstance().gameDirectory.toPath());

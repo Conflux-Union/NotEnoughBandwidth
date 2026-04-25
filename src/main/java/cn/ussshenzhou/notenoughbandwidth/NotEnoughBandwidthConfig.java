@@ -29,6 +29,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
     public int dccTimeout = 60;
     public boolean chunkCacheEnabled = true;
     public int chunkCacheMaxSizeMB = 2048;
+    public boolean lightStripEnabled = false;
 
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
