@@ -1,6 +1,9 @@
 # Not Enough Bandwidth (NEB) — Fabric Port
 
-**Fabric mod for Minecraft 1.21.6** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, and persistent client-side chunk deduplication.
+**Fabric mod for Minecraft 1.21.11** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, persistent client-side chunk deduplication, and chunk light stripping.
+
+> [!NOTE]
+> Pre-release versions may include experimental features for early testing. If you want to try new features before they are officially released, download a [pre-release](https://github.com/RMS-Server/NotEnoughBandwidth/releases). Otherwise, stick to the latest stable release.
 
 > **Need support or a port for another version?**
 > Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
@@ -17,6 +20,25 @@ In the TeaCon Jiachen dataset, compared to raw uncompressed data, NEB can theore
 In tests conducted in a Vanilla environment, the server outbound traffic was reduced to **18%** of its original size. As the number of installed mods increases, compression performance improves.
 
 Press **N** in-game to view the network traffic status.
+
+## Benchmark
+
+Reproducible head-to-head (NEB vs vanilla zlib vs vanilla raw) over two scenarios, 60 s per cell, on a dedicated loopback setup. Zstd level 12. Full reproduction: `./gradlew benchmark` + `python3 scripts/plot_benchmark.py build/benchmark`.
+
+![bandwidth summary](docs/benchmark/summary_bars.png)
+
+![roam timeseries](docs/benchmark/roam_timeseries.png)
+
+![entities timeseries](docs/benchmark/entities_timeseries.png)
+
+<details>
+<summary>Instantaneous throughput scatter (click to expand)</summary>
+
+![roam throughput](docs/benchmark/roam_throughput.png)
+
+![entities throughput](docs/benchmark/entities_throughput.png)
+
+</details>
 
 ## Main Features
 
@@ -68,6 +90,12 @@ In Vanilla, when a player moves, the server instructs the client to immediately 
 
 Caches chunk data persistently on the client side using a local LevelDB database, keyed by a 64-bit content hash. On each connection, the client sends a Bloom Filter of all cached chunk hashes to the server. When the server is about to send a chunk whose hash is in the filter, it sends only the 20-byte hash instead of the full packet (~10–20 KB). The client loads the chunk from its local database. On a Bloom Filter false positive, the client requests the full data as a fallback. The Bloom Filter is refreshed every 64 newly cached chunks so the optimization takes effect within the same session.
 
+### Chunk Light Stripping
+
+When both sides run NEB, the server omits all sky-light and block-light nibble arrays from the chunk packet — light data that vanilla ships as up to 96 KB raw per chunk. The client recomputes full-chunk lighting locally after load using the vanilla light engine, so the visual result is identical.
+
+Measured savings in exploration workload (dedicated server): **−27% baked bandwidth per chunk**, **−48% raw bandwidth per chunk**. Light nibble arrays are near-perfectly compressible by the Zstd dictionary (≈92%), so raw savings are larger than baked savings. Standalone `light_update` delta packets (sent on block changes) are unaffected.
+
 ## Configuration
 
 Modify the configuration file at `config/NotEnoughBandwidthConfig.json`.
@@ -91,7 +119,7 @@ The blacklist for compatibility mode. Packets listed here will be skipped by NEB
 
 > **Works independently on client and server.**
 
-The Zstd compression level (integer 1-19). Default is 6. Higher values produce better compression but use more CPU.
+The Zstd compression level (integer 1-19). Default is 12. Higher values produce better compression but use more CPU. Level 12 is the balanced point between compression ratio and CPU cost in our testing; drop to 6 if your server CPU is the bottleneck, raise to 19 if CPU is idle and you want to squeeze every last byte.
 
 ### contextLevel
 
@@ -120,11 +148,17 @@ Whether to enable the Persistent Chunk Cache. Default is `true`.
 
 Maximum size of the local chunk cache database in megabytes. Default is `2048` (2 GB).
 
+### lightStripEnabled
+
+> **Server only (requires NEB on both sides).**
+
+Whether to strip sky-light and block-light data from chunk packets sent to NEB clients. The client recomputes lighting locally after chunk load. Default is `true`. Set to `false` to disable light stripping and revert to vanilla light delivery.
+
 ## Installation
 
 Requires:
-- Minecraft 1.21.6
-- Fabric Loader >= 0.18.0
+- Minecraft 1.21.11
+- Fabric Loader >= 0.19.2
 - Fabric API
 
 **Both client and server must install NEB.** When a client without NEB connects, the server falls back to vanilla behavior for that connection.

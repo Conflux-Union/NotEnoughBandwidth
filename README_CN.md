@@ -1,6 +1,9 @@
 # 网络包优化 | Not Enough Bandwidth (NEB) — Fabric 移植版
 
-**Fabric 模组，适用于 Minecraft 1.21.6** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重大幅削减网络流量。
+**Fabric 模组，适用于 Minecraft 1.21.11** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重、区块光照剥离大幅削减网络流量。
+
+> [!NOTE]
+> Pre-release 版本可能包含实验性新功能以供提前测试。如希望抢先体验，请前往 [Releases 页面](https://github.com/RMS-Server/NotEnoughBandwidth/releases) 下载 Pre-release；否则请下载最新正式版。
 
 > **如需适配更多版本或遇到问题**，欢迎提交 [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues)、加入 QQ 群 **362669270**（[邀请链接](https://qm.qq.com/q/Ch5CGWyjjc)），或发送邮件至 [support@rms.net.cn](mailto:support@rms.net.cn)。
 
@@ -15,7 +18,26 @@ NEB 在尽可能不影响模组和玩家正常使用的前提下，通过多种�
 
 在纯原版环境下实测，服务器出站流量降至原来的 **18%**。理论上，随着安装模组数量增多，传输内容更加复杂，压缩效果也会随之提升。
 
-游戏内按 **Alt+N** 查看实时流量统计。
+游戏内按 **N** 查看实时流量统计。
+
+## 基准测试
+
+NEB / 原版 zlib / 原版 raw 三种配置在 roam（跑图）、entities（多实体）两种场景下各运行 60 秒的实测对比,Zstd level 12,本地回环双 JVM。复现:`./gradlew benchmark` + `python3 scripts/plot_benchmark.py build/benchmark`。
+
+![总带宽对比](docs/benchmark/summary_bars.png)
+
+![roam 累积曲线](docs/benchmark/roam_timeseries.png)
+
+![entities 累积曲线](docs/benchmark/entities_timeseries.png)
+
+<details>
+<summary>瞬时吞吐量散点图（点击展开）</summary>
+
+![roam 瞬时带宽](docs/benchmark/roam_throughput.png)
+
+![entities 瞬时带宽](docs/benchmark/entities_throughput.png)
+
+</details>
 
 ## 主要功能
 
@@ -67,6 +89,12 @@ NEB 在尽可能不影响模组和玩家正常使用的前提下，通过多种�
 
 在客户端本地使用 LevelDB 持久化缓存区块数据，以内容的 64 位哈希为索引。每次连接时，客户端将所有已缓存区块哈希构建为 Bloom Filter 上报给服务端。服务端发送区块前查询该过滤器——若命中，则只发送 20 字节的哈希而非完整区块包（约 10–20 KB）；客户端直接从本地数据库加载。若出现 Bloom Filter 假阳性，客户端回退请求完整数据。每缓存 64 个新区块后 Bloom Filter 自动更新推送，当局游戏中即可享受缓存优化效果。
 
+### 区块光照剥离
+
+双端均安装 NEB 时，服务端在发送区块包时省略所有天光和方块光的 nibble 数组——原版最多每块携带 96 KB 原始光照数据。客户端在区块加载完成后由本地光照引擎重新计算全块光照，视觉效果与原版无差异。
+
+探索工况实测（独立服务器）：**每块 baked 带宽降低约 27%，raw 带宽降低约 48%**。光照 nibble 数组几乎全由 Zstd 字典压缩消除（约 92%），因此 raw 降幅远大于 baked 降幅。服务端因方块变化发出的独立增量 `light_update` 包不受影响。
+
 ## 配置
 
 配置文件路径：`config/NotEnoughBandwidthConfig.json`
@@ -90,7 +118,7 @@ NEB 在尽可能不影响模组和玩家正常使用的前提下，通过多种�
 
 > **客户端和服务端分别独立生效。**
 
-Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好，但 CPU 占用也越高。
+Zstd 压缩等级（整数 1-19），默认为 **12**。数值越高压缩率越好，但 CPU 占用也越高。基准测试下 level 12 是压缩率与 CPU 成本的平衡点；若服务端 CPU 吃紧可降至 6,若 CPU 有余力可升至 19 进一步压榨带宽。
 
 ### contextLevel
 
@@ -119,11 +147,17 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 
 本地区块缓存数据库的最大占用空间（MB）。默认为 `2048`（即 2 GB）。
 
+### lightStripEnabled
+
+> **仅在服务端生效（需双端均安装 NEB）。**
+
+是否对 NEB 客户端的区块包执行光照剥离。客户端收到后在本地重新计算光照。默认为 `true`。设为 `false` 可关闭光照剥离，恢复原版光照传输行为。
+
 ## 安装
 
 依赖要求：
-- Minecraft 1.21.6
-- Fabric Loader >= 0.18.0
+- Minecraft 1.21.11
+- Fabric Loader >= 0.19.2
 - Fabric API
 
 **客户端和服务端均需安装 NEB。** 若有客户端未安装 NEB，服务端会自动对该连接回退至原版行为。

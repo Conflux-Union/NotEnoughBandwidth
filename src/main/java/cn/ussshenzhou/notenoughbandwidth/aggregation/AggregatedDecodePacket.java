@@ -2,6 +2,7 @@ package cn.ussshenzhou.notenoughbandwidth.aggregation;
 
 import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.network.state.NetworkState;
@@ -95,11 +96,10 @@ public class AggregatedDecodePacket {
         // Build a fresh snapshot — no mutation of shared state.
         var fresh = new Object2IntArrayMap<Identifier>();
         fresh.defaultReturnValue(-1);
-        vanillaCodec.typeToIndex.forEach((t, i) -> {
-            if (t instanceof PacketType<?> pt) {
-                fresh.put(pt.id(), (int) i);
-            }
-        });
+        Object2IntMap<PacketType<?>> typeToIndex = (Object2IntMap<PacketType<?>>) vanillaCodec.typeToIndex;
+        for (var entry : typeToIndex.object2IntEntrySet()) {
+            fresh.put(entry.getKey().id(), entry.getIntValue());
+        }
         VANILLA_TO_ID = fresh;
         LAST_KNOWN_SIZE.set(currentSize);
         return fresh;
