@@ -93,6 +93,20 @@ jobs:
           git tag "v${{ matrix.mod_version }}"
           git push origin "v${{ matrix.mod_version }}"
 
+      - name: Publish to Modrinth
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: vD8fMHSr
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: /tmp/artifacts/*.jar
+          name: Not Enough Bandwidth ${{ matrix.mod_version }}
+          version: ${{ matrix.mod_version }}
+          version-type: release
+          loaders: fabric
+          game-versions: ${{ matrix.mc_version }}
+          dependencies: |
+            fabric-api(required)
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

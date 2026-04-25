@@ -24,9 +24,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.BitSet;
+
 /**
  * In 1.20.1, chunk data sending is done via ThreadedAnvilChunkStorage.sendChunkDataPackets().
- * We intercept it to implement PCC bloom-filter optimization.
+ * We intercept it to implement PCC bloom-filter optimization and optional
+ * light stripping while preserving the old Fabric networking API.
  */
 @Mixin(ThreadedAnvilChunkStorage.class)
 public class ChunkDataSenderMixin {
@@ -41,18 +44,19 @@ public class ChunkDataSenderMixin {
                                         WorldChunk chunk,
                                         CallbackInfo ci) {
         var cfg = NotEnoughBandwidthConfig.get();
-        if (!cfg.chunkCacheEnabled) return;
-
         ClientConnection connection = player.networkHandler.connection;
         if (!NebConnectionRegistry.isActive(connection)) return;
+        if (!cfg.chunkCacheEnabled && !cfg.lightStripEnabled) return;
+
+        BitSet lightMask = cfg.lightStripEnabled ? new BitSet() : null;
 
         // During PENDING, the bloom filter hasn't arrived yet so we can't make
         // PCC decisions.  Queue the chunk send and replay it later with bloom
         // filter awareness once the client's manifest has been received.
-        if (NebConnectionRegistry.isPending(connection)) {
+        if (cfg.chunkCacheEnabled && NebConnectionRegistry.isPending(connection)) {
             ChunkDataS2CPacket pkt = cachedDataPacket.getValue();
             if (pkt == null) {
-                pkt = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
+                pkt = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), lightMask, lightMask);
                 cachedDataPacket.setValue(pkt);
             }
             PendingChunkQueue.enqueue(connection, player, pkt);
@@ -61,12 +65,14 @@ public class ChunkDataSenderMixin {
         }
 
         ChunkDataS2CPacket packet = cachedDataPacket.getValue();
-        if (packet == null) {
+        if (packet == null || cfg.lightStripEnabled) {
             // Vanilla hasn't created the packet yet — create and cache it so
             // we can compute its content hash for the bloom filter check.
-            packet = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
+            packet = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), lightMask, lightMask);
             cachedDataPacket.setValue(packet);
         }
+
+        if (!cfg.chunkCacheEnabled) return;
 
         ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(),
                 "SERVER", chunk.getPos().x, chunk.getPos().z);

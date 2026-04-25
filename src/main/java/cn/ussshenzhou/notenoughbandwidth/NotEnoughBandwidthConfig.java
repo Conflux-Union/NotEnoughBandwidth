@@ -21,13 +21,14 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add("minecraft:player_info_remove");
     }};
     public boolean debugLog = false;
-    public int compressionLevel = 6;
+    public int compressionLevel = 12;
     public int contextLevel = 23;
     public int dccSizeLimit = 60;
     public int dccDistance = 5;
     public int dccTimeout = 60;
     public boolean chunkCacheEnabled = true;
     public int chunkCacheMaxSizeMB = 2048;
+    public boolean lightStripEnabled = true;
 
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{

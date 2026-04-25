@@ -1,0 +1,76 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticks:
+        description: 'Ticks per scenario (default 1200 = 60s)'
+        required: false
+        default: '1200'
+  pull_request:
+    paths:
+      - 'src/main/**'
+      - 'gradle.properties'
+      - 'build.gradle'
+      - '.github/workflows/benchmark.yml'
+      - 'scripts/plot_benchmark.py'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install plot deps
+        run: pip install matplotlib numpy
+
+      # The client JVM launches a real MinecraftClient which needs a display +
+      # OpenGL. Xvfb + Mesa software renderer is enough; we don't care about
+      # render quality, only that the client runs and consumes packets.
+      - name: Install headless GL stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libglu1-mesa libxi6 libxtst6 libxrandr2 libxrender1 libxcursor1 libxcomposite1 libasound2t64 || \
+          sudo apt-get install -y xvfb libgl1 libglu1-mesa libxi6 libxtst6 libxrandr2 libxrender1 libxcursor1 libxcomposite1 libasound2
+
+      - name: Run benchmark
+        run: xvfb-run -a ./gradlew benchmark --no-daemon -Pneb.benchTicks=${{ github.event.inputs.ticks || '1200' }}
+
+      - name: Render plots
+        if: always()
+        run: python3 scripts/plot_benchmark.py build/benchmark
+
+      - name: Upload CSVs + figures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neb-benchmark
+          path: build/benchmark/
+          retention-days: 30
+
+      - name: Post summary
+        if: always()
+        run: |
+          echo "## NEB Benchmark Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f build/benchmark/summary.csv ]; then
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat build/benchmark/summary.csv >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_No summary.csv produced._" >> $GITHUB_STEP_SUMMARY
+          fi

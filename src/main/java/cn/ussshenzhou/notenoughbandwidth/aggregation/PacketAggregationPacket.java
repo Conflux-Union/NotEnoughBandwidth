@@ -4,6 +4,7 @@ import cn.ussshenzhou.notenoughbandwidth.ModConstants;
 import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.config.ConfigHelper;
 import cn.ussshenzhou.notenoughbandwidth.indextype.CustomPacketPrefixHelper;
+import cn.ussshenzhou.notenoughbandwidth.stat.PacketTypeStatManager;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.util.DefaultChannelPipelineHelper;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
@@ -39,6 +40,14 @@ public class PacketAggregationPacket {
             AttributeKey.valueOf("neb_last_baked_size");
 
     private int bakedSize;
+    /**
+     * Wire bytes of this aggregation packet's inner CustomPayload blob (boolean +
+     * optional varint header + compressed-or-raw payload), measured symmetrically
+     * on encode and decode so per-PacketType accounting attributes the same total
+     * on both sides. Distinct from {@link #bakedSize} which the SimpleStatManager
+     * pipeline uses with different semantics on each side.
+     */
+    private int innerBlobSize;
 
     // ---- encode side ----
     private final ArrayList<AggregatedEncodePacket> packetsToEncode;
@@ -54,9 +63,17 @@ public class PacketAggregationPacket {
     }
 
     public void write(PacketByteBuf buffer) {
+        int blobStartIdx = buffer.writerIndex();
         var rawBuf = new PacketByteBuf(ByteBufAllocator.DEFAULT.buffer());
         try {
-            packetsToEncode.forEach(p -> encodeSubPacket(rawBuf, p));
+            int[] subRawSizes = new int[packetsToEncode.size()];
+            int prevWriterIdx = rawBuf.writerIndex();
+            for (int i = 0; i < packetsToEncode.size(); i++) {
+                encodeSubPacket(rawBuf, packetsToEncode.get(i));
+                int newIdx = rawBuf.writerIndex();
+                subRawSizes[i] = newIdx - prevWriterIdx;
+                prevWriterIdx = newIdx;
+            }
 
             int rawSize = rawBuf.readableBytes();
             if (DictionaryManager.isSampling()) {
@@ -86,8 +103,26 @@ public class PacketAggregationPacket {
             }
             connection.channel.attr(BAKED_SIZE_KEY).set(this.bakedSize);
             SimpleStatManager.outRaw(rawSize);
+            this.innerBlobSize = buffer.writerIndex() - blobStartIdx;
+            recordPerTypeOut(subRawSizes, rawSize, this.innerBlobSize);
         } finally {
             rawBuf.release();
+        }
+    }
+
+    private void recordPerTypeOut(int[] subRawSizes, int rawSize, int bakedSize) {
+        if (rawSize <= 0 || subRawSizes.length == 0) return;
+        long allocatedBaked = 0;
+        for (int i = 0; i < subRawSizes.length; i++) {
+            long subBaked;
+            if (i == subRawSizes.length - 1) {
+                subBaked = bakedSize - allocatedBaked;
+                if (subBaked < 0) subBaked = 0;
+            } else {
+                subBaked = (long) Math.floor((double) subRawSizes[i] * bakedSize / rawSize);
+                allocatedBaked += subBaked;
+            }
+            PacketTypeStatManager.record(side, packetsToEncode.get(i).type, subRawSizes[i], subBaked);
         }
     }
 
@@ -111,6 +146,7 @@ public class PacketAggregationPacket {
         this.packetsToEncode = null;
         // Take direct ownership of the buffer — caller is responsible for
         // passing us a buf we can own (e.g. buf.copy()).
+        this.innerBlobSize = buffer.readableBytes();
         this.data = buffer;
     }
 
@@ -144,22 +180,32 @@ public class PacketAggregationPacket {
         // In 1.20.1, DecoderHandler has a 'side' field (access-widened)
         NetworkSide decoderSide = decoder.side;
         var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
+        var subRawSizes = new ArrayList<Integer>();
+        int totalSubRaw = 0;
         try {
+            int prevReaderIdx = raw.readerIndex();
             while (raw.readableBytes() > 0) {
                 var type = CustomPacketPrefixHelper.read(raw);
                 var size = raw.readVarInt();
                 var subData = new PacketByteBuf(raw.readRetainedSlice(size));
+                int newIdx = raw.readerIndex();
+                int subRaw = newIdx - prevReaderIdx;
+                prevReaderIdx = newIdx;
                 if (type == null) {
                     LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
                     subData.release();
                     continue;
                 }
                 packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+                subRawSizes.add(subRaw);
+                totalSubRaw += subRaw;
             }
         } finally {
             data.release();
             raw.release();
         }
+
+        recordPerTypeIn(decoderSide, packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
 
         for (var sub : packetsToHandle) {
             try {
@@ -177,6 +223,28 @@ public class PacketAggregationPacket {
             } finally {
                 sub.getData().release();
             }
+        }
+    }
+
+    private static void recordPerTypeIn(net.minecraft.network.NetworkSide side,
+                                        ArrayList<AggregatedDecodePacket> sub,
+                                        ArrayList<Integer> subRawSizes,
+                                        int totalSubRaw,
+                                        int bundleBaked) {
+        int n = sub.size();
+        if (n == 0 || totalSubRaw <= 0) return;
+        long allocatedBaked = 0;
+        for (int i = 0; i < n; i++) {
+            int subRaw = subRawSizes.get(i);
+            long subBaked;
+            if (i == n - 1) {
+                subBaked = bundleBaked - allocatedBaked;
+                if (subBaked < 0) subBaked = 0;
+            } else {
+                subBaked = (long) Math.floor((double) subRaw * bundleBaked / totalSubRaw);
+                allocatedBaked += subBaked;
+            }
+            PacketTypeStatManager.record(side, sub.get(i).getType(), subRaw, subBaked);
         }
     }
 

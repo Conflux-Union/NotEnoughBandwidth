@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
+import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.AggregationManager;
 import cn.ussshenzhou.notenoughbandwidth.aggregation.PacketAggregationPacket;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
@@ -24,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.util.BitSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.LOCAL;
@@ -90,8 +92,9 @@ public class ModNetworking {
             server.execute(() -> {
                 var chunk = world.getChunkManager().getWorldChunk(pos.x, pos.z);
                 if (chunk != null) {
+                    BitSet lightMask = NotEnoughBandwidthConfig.get().lightStripEnabled ? new BitSet() : null;
                     player.networkHandler.sendPacket(
-                            new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null));
+                            new ChunkDataS2CPacket(chunk, world.getLightingProvider(), lightMask, lightMask));
                     LOGGER.debug("Resent chunk ({},{}) after cache miss for {}",
                             pos.x, pos.z, player.getName().getString());
                 } else {
