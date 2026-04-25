@@ -18,14 +18,24 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.BitSet;
+
 @Mixin(ChunkDataSender.class)
 public class ChunkDataSenderMixin {
 
     /**
      * Intercepts the moment a chunk data packet would be sent to a player.
-     * When the client has uploaded a bloom filter and it reports a likely cache hit,
-     * we send a tiny ChunkHashPayload (~20 bytes) instead of the full packet (~10-20 KB).
-     * The client loads from its local DB, or falls back to requesting the full data.
+     * Two orthogonal NEB transforms are applied here so we only build the
+     * packet once:
+     * <ul>
+     *     <li>{@code lightStripEnabled}: light nibble layers are omitted by
+     *     passing empty BitSets for the sky/block section masks. The client
+     *     recomputes full-chunk light after load.</li>
+     *     <li>{@code chunkCacheEnabled} (PCC): if the client's bloom filter
+     *     reports a likely hit, ship a tiny {@link ChunkHashPayload} instead
+     *     of the full packet.</li>
+     * </ul>
+     * If neither transform applies we bail out and let the vanilla path run.
      */
     @Inject(method = "sendChunkData",
             at = @At("HEAD"),
@@ -35,26 +45,31 @@ public class ChunkDataSenderMixin {
                                                WorldChunk chunk,
                                                CallbackInfo ci) {
         var cfg = NotEnoughBandwidthConfig.get();
-        if (!cfg.chunkCacheEnabled) return;
-
         ClientConnection connection = handler.connection;
         if (!NebConnectionRegistry.isEnabled(connection)) return;
+        if (!cfg.chunkCacheEnabled && !cfg.lightStripEnabled) return;
 
-        // Build the packet once. On hit we skip the vanilla path entirely;
-        // on miss we send this packet ourselves instead of letting vanilla
-        // construct a second identical one.
-        ChunkDataS2CPacket packet = new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null);
-        ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(), world.getRegistryManager(),
-                "SERVER", chunk.getPos().x, chunk.getPos().z);
+        // Empty BitSet -> LightData ctor writes zero nibble layers.
+        // null -> vanilla "send all sections" behavior.
+        BitSet lightMask = cfg.lightStripEnabled ? new BitSet() : null;
+        ChunkDataS2CPacket packet = new ChunkDataS2CPacket(
+                chunk, world.getLightingProvider(), lightMask, lightMask);
 
-        if (ChunkCacheManager.serverMightHaveChunk(connection, result.hash())) {
-            handler.sendPacket(new CustomPayloadS2CPacket(
-                    new ChunkHashPayload(chunk.getPos().x, chunk.getPos().z, result.hash())));
-            SimpleStatManager.chunkCacheHits.incrementAndGet();
-            SimpleStatManager.chunkCacheSavedBytes.addAndGet(result.dataBytes());
-            SimpleStatManager.outRaw((int) Math.min(result.dataBytes(), Integer.MAX_VALUE));
+        if (cfg.chunkCacheEnabled) {
+            ChunkHashUtil.Result result = ChunkHashUtil.compute(packet.getChunkData(), world.getRegistryManager(),
+                    "SERVER", chunk.getPos().x, chunk.getPos().z);
+
+            if (ChunkCacheManager.serverMightHaveChunk(connection, result.hash())) {
+                handler.sendPacket(new CustomPayloadS2CPacket(
+                        new ChunkHashPayload(chunk.getPos().x, chunk.getPos().z, result.hash())));
+                SimpleStatManager.chunkCacheHits.incrementAndGet();
+                SimpleStatManager.chunkCacheSavedBytes.addAndGet(result.dataBytes());
+                SimpleStatManager.outRaw((int) Math.min(result.dataBytes(), Integer.MAX_VALUE));
+            } else {
+                SimpleStatManager.chunkCacheMisses.incrementAndGet();
+                handler.sendPacket(packet);
+            }
         } else {
-            SimpleStatManager.chunkCacheMisses.incrementAndGet();
             handler.sendPacket(packet);
         }
         ci.cancel();
