@@ -1,4 +1,6 @@
 {
   "key.categories.neb": "NotEnoughBandwidth",
-  "key.neb.stat": "带宽统计屏幕"
+  "key.neb.stat": "带宽统计屏幕",
+  "neb.update.available": "[NEB] 发现新版本: %s (当前版本: %s)。",
+  "neb.update.download": "下载"
 }
