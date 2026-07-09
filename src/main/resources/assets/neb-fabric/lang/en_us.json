@@ -1,4 +1,6 @@
 {
   "key.categories.neb": "NotEnoughBandwidth",
-  "key.neb.stat": "Bandwidth Statistics Screen"
+  "key.neb.stat": "Bandwidth Statistics Screen",
+  "neb.update.available": "[NEB] A new version is available: %s (you have %s).",
+  "neb.update.download": "Download"
 }
