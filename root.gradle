@@ -1,0 +1,30 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.15-SNAPSHOT' apply false
+    id 'com.replaymod.preprocess-root' version '221276c7d4'
+    id 'com.replaymod.preprocess' version '221276c7d4' apply false
+}
+
+preprocess {
+    strictExtraMappings = true
+
+    // Version graph. Ints encode major*10000 + minor*100 + patch, so source
+    // conditions can be written as e.g. `//#if MC>=26.1` (= 260100).
+    // mappings arg: non-null = obfuscated (joined via intermediary/mojmap),
+    // null = unobfuscated (26.1+ ships official names).
+    def mc26100 = createNode('26.1', 260100, null)
+}
+
+// Aggregates every version's mod jar into the root build/libs for CI.
+def collectJars = tasks.register('collectJars', Copy) {
+    group = 'build'
+    description = 'Collect all per-version mod jars into build/libs.'
+    into layout.buildDirectory.dir('libs')
+}
+subprojects { p ->
+    p.afterEvaluate {
+        def jarTask = p.tasks.findByName('remapJar') ?: p.tasks.findByName('jar')
+        if (jarTask != null) {
+            collectJars.configure { from(jarTask) }
+        }
+    }
+}

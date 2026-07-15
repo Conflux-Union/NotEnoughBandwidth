@@ -3,5 +3,33 @@ pluginManagement {
         maven { url "https://maven.fabricmc.net/" }
         mavenCentral()
         gradlePluginPortal()
+        maven {
+            url "https://jitpack.io"
+            content { includeGroupByRegex "com\\.github\\..*" }
+        }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id in ['com.replaymod.preprocess', 'com.replaymod.preprocess-root']) {
+                useModule("com.github.replaymod:preprocessor:${requested.version}")
+            }
+        }
+    }
+}
+
+plugins {
+    // Auto-provisions the JDK 21/25 toolchains when they are not installed (mainly CI).
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'NotEnoughBandwidth'
+rootProject.buildFileName = 'root.gradle'
+
+// One subproject per supported Minecraft version; all share build.gradle.
+['26.1'].each { v ->
+    include ":$v"
+    project(":$v").with {
+        projectDir = file("versions/$v")
+        buildFileName = '../../build.gradle'
     }
 }

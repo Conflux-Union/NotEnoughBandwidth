@@ -3,11 +3,11 @@
   "minVersion": "0.8",
   "package": "cn.ussshenzhou.notenoughbandwidth.mixin",
   "plugin": "cn.ussshenzhou.notenoughbandwidth.mixin.NebMixinPlugin",
-  "compatibilityLevel": "JAVA_25",
+  "compatibilityLevel": "${mixin_java_level}",
   "mixins": [
     "ConnectionMixin",
     "PacketEncoderMixin",
-    "PacketDecoderMixin",
+    "PacketDecoderMixin"${payload_mixin},
     "ChunkMapMixin",
     "PlayerListMixin",
     "ChunkDataSenderMixin",

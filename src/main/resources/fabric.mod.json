@@ -15,9 +15,9 @@
   "mixins": ["neb-fabric.mixins.json"],
   "accessWidener": "neb-fabric.accesswidener",
   "depends": {
-    "fabricloader": ">=0.18.4",
-    "minecraft": ">=26 <27",
-    "java": ">=25",
+    "fabricloader": ">=${loader_dependency}",
+    "minecraft": "${minecraft_dependency}",
+    "java": ">=${java_version}",
     "fabric-api": "*"
   }
 }
