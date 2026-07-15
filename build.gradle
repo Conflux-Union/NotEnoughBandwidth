@@ -1,15 +1,43 @@
 // Shared build script applied to every versions/<mc> subproject (see settings.gradle).
 plugins {
-    id 'net.fabricmc.fabric-loom'
-    id 'com.replaymod.preprocess'
     id 'maven-publish'
+}
+
+// MC 26.1+ ships unobfuscated with official names; older versions are obfuscated
+// and compiled against Mojang official mappings. Loom 1.15 splits these into two
+// plugin ids: net.fabricmc.fabric-loom (no-remap) vs net.fabricmc.fabric-loom-remap.
+boolean unobfuscated = (project.name.split('\\.')[0] as int) >= 26
+apply plugin: unobfuscated ? 'net.fabricmc.fabric-loom' : 'net.fabricmc.fabric-loom-remap'
+apply plugin: 'com.replaymod.preprocess'
+
+// Gradle 9 shim: the preprocessor resolves its own 'preprocess-mojangMappings'
+// dependencyScope directly (hard error on Gradle 9, deprecated on 8). Re-point the
+// merge task at a legal resolvable view; the plugin's illegal provider is discarded
+// before it is ever queried. Only exists on obfuscated versions adjacent to 26.1+.
+def mojangScope = configurations.findByName('preprocess-mojangMappings')
+if (mojangScope != null) {
+    def mojangResolver = configurations.resolvable('preprocess-mojangMappings-resolver') {
+        extendsFrom(mojangScope)
+    }
+    // Must run after the plugin's own afterEvaluate (which registers the task);
+    // configuring via named() appends after the registration action, so our legal
+    // provider replaces the illegal one instead of being overwritten by it.
+    afterEvaluate {
+        if ('mergeDestinationNamedAndMojangMappings' in tasks.names) {
+            tasks.named('mergeDestinationNamedAndMojangMappings').configure {
+                mojangMappings.fileProvider(mojangResolver.flatMap { it.elements }.map { it.iterator().next().asFile })
+            }
+        }
+    }
 }
 
 int mcVersion = project.mcVersion  // injected by the preprocess plugin from the root version graph
 boolean isMainProject = project.name == rootProject.file('versions/mainProject').text.trim()
-// MC 26.1+ ships unobfuscated with official names; older versions are obfuscated
-// and compiled against Mojang official mappings.
-boolean unobfuscated = mcVersion >= 260100
+
+preprocess {
+    // Shape-change templates (method vs field, constructors) applied at remap time.
+    patternAnnotation.set('cn.ussshenzhou.notenoughbandwidth.util.Pattern')
+}
 
 version = project.mod_version
 group = project.maven_group
@@ -87,9 +115,7 @@ processResources {
                java_version: project.java_version
     }
     filesMatching("neb-fabric.mixins.json") {
-        expand mixin_java_level: "JAVA_${project.java_version}",
-               payload_mixin: (mcVersion >= 12101 && mcVersion <= 12111)
-                       ? ",\n    \"CustomPacketPayloadMixin\"" : ""
+        expand mixin_java_level: "JAVA_${project.java_version}"
     }
 }
 

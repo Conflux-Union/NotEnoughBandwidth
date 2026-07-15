@@ -106,6 +106,10 @@ public class NotEnoughBandwidthClient implements ClientModInitializer {
                 .append(Component.literal(" "))
                 .append(link);
 
+        //#if MC>=260100
         client.player.sendSystemMessage(message);
+        //#else
+        //$$ client.player.displayClientMessage(message, false);
+        //#endif
     }
 }

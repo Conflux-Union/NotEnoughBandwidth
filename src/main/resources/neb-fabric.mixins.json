@@ -7,7 +7,7 @@
   "mixins": [
     "ConnectionMixin",
     "PacketEncoderMixin",
-    "PacketDecoderMixin"${payload_mixin},
+    "PacketDecoderMixin",
     "ChunkMapMixin",
     "PlayerListMixin",
     "ChunkDataSenderMixin",

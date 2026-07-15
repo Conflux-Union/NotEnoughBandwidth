@@ -1,0 +1,28 @@
+# Renames between MC 26.1 official names (left) and 1.21.11 mojang mappings
+# (right) that the shared-name join cannot infer automatically.
+# Shape changes (method<->field, constructors) live in VersionPatterns instead.
+
+# Vanilla: GUI render-state extraction rework in 26.1
+net.minecraft.client.gui.GuiGraphicsExtractor net.minecraft.client.gui.GuiGraphics
+net.minecraft.client.gui.GuiGraphicsExtractor text() drawString()
+net.minecraft.client.gui.screens.Screen net.minecraft.client.gui.screens.Screen
+net.minecraft.client.gui.screens.Screen extractRenderState() render()
+
+# Vanilla: ChunkPos long packing renamed in 26.1
+net.minecraft.world.level.ChunkPos net.minecraft.world.level.ChunkPos
+net.minecraft.world.level.ChunkPos pack() asLong()
+
+# Fabric API: play payload registries renamed after 1.21.11
+# (identity class entries required - fabric classes are not in the MC mapping trees)
+# (explicit descriptors required for methods - fabric classes are absent from the
+#  MC mapping trees, so overloads cannot be enumerated automatically)
+net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
+net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry clientboundPlay()Lnet/fabricmc/fabric/api/networking/v1/PayloadTypeRegistry; playS2C()
+net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry serverboundPlay()Lnet/fabricmc/fabric/api/networking/v1/PayloadTypeRegistry; playC2S()
+net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl
+net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl CLIENTBOUND_PLAY:Lnet/fabricmc/fabric/impl/networking/PayloadTypeRegistryImpl; PLAY_S2C
+net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl SERVERBOUND_PLAY:Lnet/fabricmc/fabric/impl/networking/PayloadTypeRegistryImpl; PLAY_C2S
+
+# Fabric API: KeyBindingHelper renamed to KeyMappingHelper in 26.1
+net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
+net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper registerKeyMapping(Lnet/minecraft/client/KeyMapping;)Lnet/minecraft/client/KeyMapping; registerKeyBinding()
