@@ -132,11 +132,34 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 ## 安装
 
 依赖要求：
-- Minecraft 26.1
-- Fabric Loader >= 0.18.4
+- Minecraft 1.21.1 – 26.1（下载与游戏版本匹配的 jar）
+- Fabric Loader（1.21.1 需 >= 0.16，26.1 需 >= 0.18.4）
 - Fabric API
 
 **客户端和服务端均需安装 NEB。** 若有客户端未安装 NEB，服务端会自动对该连接回退至原版行为。
+
+Minecraft 1.20.1 在独立的 `1.20.1` 分支上单独维护。
+
+## 开发
+
+所有受支持的 Minecraft 版本都从本分支统一构建，基于
+[ReplayMod preprocessor](https://github.com/ReplayMod/preprocessor)：
+
+- `src/main` 是唯一源码，面向最新版本（26.1）编写。
+- 版本差异通过 `//#if MC>=<ver>` 注释条件、`@Pattern` 模板
+  （`util/VersionPatterns.java`，处理方法/字段等形状变化）以及
+  `versions/mapping-*.txt`（映射连接推断不出的改名）表达。
+- 每个版本的配置（loader/fabric-api 版本、mod 版本号）在
+  `versions/<mc>/gradle.properties`；按版本覆盖的资源（如 access widener）
+  在 `versions/<mc>/src/main/resources/`。
+
+常用命令：
+
+```bash
+./gradlew build collectJars   # 构建全部版本，jar 输出到 build/libs/
+./gradlew :1.21.4:build       # 构建单个版本
+./gradlew benchmark           # 运行带宽基准测试（26.1）
+```
 
 ## 版权和许可
 

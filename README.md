@@ -133,11 +133,34 @@ Whether to strip chunk light data from server chunk packets and recompute it on 
 ## Installation
 
 Requires:
-- Minecraft 26.1
-- Fabric Loader >= 0.18.4
+- Minecraft 1.21.1 – 26.1 (download the jar matching your version)
+- Fabric Loader (>= 0.16 on 1.21.1, >= 0.18.4 on 26.1)
 - Fabric API
 
 **Both client and server must install NEB.** When a client without NEB connects, the server falls back to vanilla behavior for that connection.
+
+Minecraft 1.20.1 is maintained separately on the `1.20.1` branch.
+
+## Development
+
+All supported Minecraft versions build from this single branch using the
+[ReplayMod preprocessor](https://github.com/ReplayMod/preprocessor):
+
+- `src/main` is the source of truth, written against the newest version (26.1).
+- Version differences use `//#if MC>=<ver>` comment conditionals, `@Pattern`
+  templates (`util/VersionPatterns.java`) for shape changes, and
+  `versions/mapping-*.txt` for renames the mapping join cannot infer.
+- Per-version settings (loader/fabric-api versions, mod version) live in
+  `versions/<mc>/gradle.properties`; per-version resource overrides (such as
+  the access widener) live in `versions/<mc>/src/main/resources/`.
+
+Common commands:
+
+```bash
+./gradlew build collectJars   # build every version; jars land in build/libs/
+./gradlew :1.21.4:build       # build a single version
+./gradlew benchmark           # run the bandwidth benchmark (26.1)
+```
 
 ## License
 
