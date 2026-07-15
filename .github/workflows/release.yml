@@ -16,27 +16,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Scan branches
+      - name: Scan versions
         id: scan
         run: |
           DATE_TAG="release-$(date +%Y.%m.%d)"
           echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
 
           includes=()
-          for branch in $(git branch -r | grep -E '^\s*origin/[0-9]' | sed 's|.*origin/||'); do
-            MOD_VERSION=$(git show "origin/${branch}:gradle.properties" 2>/dev/null | grep '^mod_version=' | cut -d'=' -f2)
-            MC_VERSION=$(git show "origin/${branch}:gradle.properties" 2>/dev/null | grep '^minecraft_version=' | cut -d'=' -f2)
+          for props in versions/*/gradle.properties; do
+            MC_VERSION=$(basename "$(dirname "$props")")
+            MOD_VERSION=$(grep '^mod_version=' "$props" | cut -d'=' -f2)
             [ -z "$MOD_VERSION" ] && continue
             if ! git rev-parse "v$MOD_VERSION" >/dev/null 2>&1; then
-              echo "  queued: $branch (v$MOD_VERSION)"
-              includes+=("{\"branch\":\"$branch\",\"mod_version\":\"$MOD_VERSION\",\"mc_version\":\"$MC_VERSION\"}")
+              echo "  queued: $MC_VERSION (v$MOD_VERSION)"
+              includes+=("{\"mc_version\":\"$MC_VERSION\",\"mod_version\":\"$MOD_VERSION\"}")
             else
-              echo "  skipped: $branch (v$MOD_VERSION already tagged)"
+              echo "  skipped: $MC_VERSION (v$MOD_VERSION already tagged)"
             fi
           done
 
           if [ ${#includes[@]} -eq 0 ]; then
-            echo "No branches need releasing."
+            echo "No versions need releasing."
             echo "has_releases=false" >> $GITHUB_OUTPUT
           else
             printf -v joined '%s,' "${includes[@]}"
@@ -48,45 +48,68 @@ jobs:
     needs: check
     if: needs.check.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{ fromJson(needs.check.outputs.matrix) }}
-      fail-fast: false
     steps:
-      - name: Checkout ${{ matrix.branch }}
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.branch }}
           fetch-depth: 0
 
-      - name: Set up JDK
+      # Per-version Java toolchains (21 for 1.21.x, 25 for 26.1+) are
+      # auto-provisioned by the foojay resolver declared in settings.gradle.
+      - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.mc_version == '26.1' && '25' || '21' }}
+          java-version: '25'
           distribution: 'temurin'
           cache: gradle
 
-      - name: Build
-        run: ./gradlew build --no-daemon
+      - name: Build all versions
+        run: ./gradlew build collectJars --no-daemon
 
-      - name: Collect jar and changelog
+      - name: Assemble changelog
         run: |
-          JAR=$(ls build/libs/*.jar | grep -v sources | grep -v javadoc | head -1)
           mkdir -p /tmp/artifacts
-
-          cp "$JAR" /tmp/artifacts/
-
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          cp build/libs/*.jar /tmp/artifacts/
+          rm -f /tmp/artifacts/*-sources.jar
+          LAST_TAG=$(git tag --list 'release-*' --sort=-creatordate | head -1)
           {
-            echo "### Minecraft ${{ matrix.mc_version }} (mod ${{ matrix.mod_version }})"
+            echo "### Changes"
             if [ -z "$LAST_TAG" ]; then
-              git log HEAD --pretty=format:"- %s (%h)" --no-merges
+              git log HEAD --pretty=format:"- %s (%h)" --no-merges | head -50
             else
               git log "${LAST_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
             fi
             echo ""
-          } > /tmp/artifacts/changelog-${{ matrix.branch }}.md
+          } > /tmp/artifacts/changelog.md
 
-      - name: Tag branch
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-all
+          path: /tmp/artifacts/
+
+  publish-versions:
+    needs: [check, build]
+    if: needs.check.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix: ${{ fromJson(needs.check.outputs.matrix) }}
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-all
+          path: /tmp/artifacts
+
+      - name: Tag version
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -98,7 +121,7 @@ jobs:
         with:
           modrinth-id: vD8fMHSr
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          files: /tmp/artifacts/*.jar
+          files: /tmp/artifacts/NotEnoughBandwidth-${{ matrix.mod_version }}.jar
           name: Not Enough Bandwidth ${{ matrix.mod_version }}
           version: ${{ matrix.mod_version }}
           version-type: release
@@ -107,25 +130,18 @@ jobs:
           dependencies: |
             fabric-api(required)
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.branch }}
-          path: /tmp/artifacts/
-
-  publish:
-    needs: [check, build]
+  release:
+    needs: [check, build, publish-versions]
     if: needs.check.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: build-*
+          name: build-all
           path: /tmp/artifacts
-          merge-multiple: true
 
       - name: Assemble release body
         id: body
@@ -135,11 +151,9 @@ jobs:
             echo "body<<$EOF_MARKER"
             echo "## Not Enough Bandwidth"
             echo ""
-            echo "Fabric Loader >= 0.18.0 | Fabric API required"
+            echo "Fabric API required"
             echo ""
-            for f in $(ls /tmp/artifacts/changelog-*.md 2>/dev/null | sort); do
-              cat "$f"
-            done
+            cat /tmp/artifacts/changelog.md
             echo "$EOF_MARKER"
           } >> $GITHUB_OUTPUT
 

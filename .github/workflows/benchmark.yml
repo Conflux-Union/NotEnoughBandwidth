@@ -11,7 +11,10 @@ on:
     paths:
       - 'src/main/**'
       - 'gradle.properties'
+      - 'versions/**'
       - 'build.gradle'
+      - 'root.gradle'
+      - 'settings.gradle'
       - '.github/workflows/benchmark.yml'
       - 'scripts/plot_benchmark.py'
 
