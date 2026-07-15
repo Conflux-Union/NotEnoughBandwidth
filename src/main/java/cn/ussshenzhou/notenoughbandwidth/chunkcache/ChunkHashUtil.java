@@ -67,7 +67,9 @@ public final class ChunkHashUtil {
         sBuf.release();
         hasher.putBytes(sections);
 
-        // 2. Heightmaps — Map<Heightmap.Types, long[]>. Sort by type name for determinism.
+        // 2. Heightmaps — Map<Heightmap.Types, long[]> since 1.21.5 (NBT compound before).
+        // Sort by type name for determinism.
+        //#if MC>=12106
         var heightmaps = chunkData.getHeightmaps();
         var sortedTypes = new ArrayList<Heightmap.Types>(heightmaps.keySet());
         sortedTypes.sort(Comparator.comparing(Heightmap.Types::name));
@@ -78,6 +80,9 @@ public final class ChunkHashUtil {
             hasher.putInt(data.length);
             for (long l : data) hasher.putLong(l);
         }
+        //#else
+        //$$ hashNbtElement(hasher, chunkData.getHeightmaps());
+        //#endif
 
         // 3. Block entities — collected via visitor, sorted by position.
         // 26.1: getBlockEntities(chunkX, chunkZ) is gone. Replacement is
@@ -152,7 +157,11 @@ public final class ChunkHashUtil {
             case FloatTag f -> hasher.putFloat(f.floatValue());
             case DoubleTag d -> hasher.putDouble(d.doubleValue());
             case StringTag s -> {
+                //#if MC>=12106
                 String val = s.value();
+                //#else
+                //$$ String val = s.getAsString();
+                //#endif
                 hasher.putInt(val.length());
                 hasher.putString(val, StandardCharsets.UTF_8);
             }

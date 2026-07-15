@@ -1,0 +1,9 @@
+# Renames between 1.21.6 (left) and 1.21.4 (right) mojang mappings that the
+# intermediary join cannot infer.
+
+# 1.21.5 replaced PacketSendListener with netty's ChannelFutureListener as the
+# Connection.send callback type. This project only uses the type in that role
+# (ConnectionMixin), so map the class wholesale; the explicit send() descriptors
+# disambiguate the three same-named overloads for the mixin target remap.
+io.netty.channel.ChannelFutureListener net.minecraft.network.PacketSendListener
+net.minecraft.network.Connection send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V send(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketSendListener;Z)V

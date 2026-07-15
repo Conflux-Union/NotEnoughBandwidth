@@ -68,6 +68,10 @@ public class ChunkDataSenderMixin {
             SimpleStatManager.chunkCacheMisses.incrementAndGet();
             handler.send(packet);
         }
+        //#if MC>=12104 && MC<12106
+        //$$ // Preserve vanilla TAIL behavior: debug-mode chunk-watching chart (removed in 1.21.5).
+        //$$ net.minecraft.network.protocol.game.DebugPackets.sendPoiPacketsForChunk(world, chunk.getPos());
+        //#endif
         ci.cancel();
     }
 }

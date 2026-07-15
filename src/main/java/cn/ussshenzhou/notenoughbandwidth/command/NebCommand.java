@@ -9,7 +9,9 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.resources.Identifier;
+//#if MC>=12111
 import net.minecraft.server.permissions.Permissions;
+//#endif
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +27,11 @@ public final class NebCommand {
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(Commands.literal("neb")
+                        //#if MC>=12111
                         .requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                        //#else
+                        //$$ .requires(src -> src.hasPermission(2))
+                        //#endif
                         .then(Commands.literal("dumpstats")
                                 .executes(ctx -> dumpStats(ctx.getSource(), "default"))
                                 .then(Commands.argument("label", StringArgumentType.word())

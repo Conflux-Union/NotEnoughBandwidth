@@ -38,11 +38,20 @@ public final class RoamScenario implements BenchScenario {
     }
 
     private static void teleportTo(ServerPlayer player, double x, double z) {
+        //#if MC>=12104
         player.teleportTo(
                 (ServerLevel) player.level(),
                 x, Y, z,
                 Collections.<Relative>emptySet(),
                 0f, 0f, false
         );
+        //#else
+        //$$ player.teleportTo(
+        //$$         (ServerLevel) player.level(),
+        //$$         x, Y, z,
+        //$$         Collections.<RelativeMovement>emptySet(),
+        //$$         0f, 0f
+        //$$ );
+        //#endif
     }
 }

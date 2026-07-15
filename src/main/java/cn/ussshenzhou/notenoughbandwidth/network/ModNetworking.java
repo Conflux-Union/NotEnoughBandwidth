@@ -17,7 +17,9 @@ import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
+//#if MC>=12111
 import net.minecraft.server.permissions.Permissions;
+//#endif
 import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,7 +92,11 @@ public class ModNetworking {
 
         ServerPlayNetworking.registerGlobalReceiver(StatQueryPayload.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
+            //#if MC>=12111
             if (player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) {
+            //#else
+            //$$ if (player.hasPermissions(2)) {
+            //#endif
                 ServerPlayNetworking.send(player, new StatRespondPayload(
                         LOCAL.inboundBytesBaked().get(),
                         LOCAL.inboundBytesRaw().get(),

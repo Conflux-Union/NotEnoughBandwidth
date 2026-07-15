@@ -98,7 +98,11 @@ public class NotEnoughBandwidthClient implements ClientModInitializer {
 
         var link = Component.translatable("neb.update.download")
                 .withStyle(s -> s
+                        //#if MC>=12106
                         .withClickEvent(new ClickEvent.OpenUrl(URI.create(info.releaseUrl())))
+                        //#else
+                        //$$ .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, info.releaseUrl()))
+                        //#endif
                         .withColor(ChatFormatting.BLUE)
                         .withUnderlined(true));
 

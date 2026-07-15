@@ -3,7 +3,9 @@ package cn.ussshenzhou.notenoughbandwidth.bench.scenarios;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+//#if MC>=12104
 import net.minecraft.world.entity.EntitySpawnReason;
+//#endif
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.npc.villager.Villager;
@@ -34,18 +36,31 @@ public final class EntitiesScenario implements BenchScenario {
     public void setup(MinecraftServer server, ServerPlayer player) {
         player.setGameMode(GameType.SPECTATOR);
         ServerLevel world = (ServerLevel) player.level();
+        //#if MC>=12104
         player.teleportTo(
                 world,
                 CENTER_X, CENTER_Y, CENTER_Z,
                 Collections.<Relative>emptySet(),
                 0f, 0f, false
         );
+        //#else
+        //$$ player.teleportTo(
+        //$$         world,
+        //$$         CENTER_X, CENTER_Y, CENTER_Z,
+        //$$         Collections.<RelativeMovement>emptySet(),
+        //$$         0f, 0f
+        //$$ );
+        //#endif
         Random rng = new Random(42L);
         for (int i = 0; i < COUNT; i++) {
             double angle = (Math.PI * 2.0 * i) / COUNT;
             double x = CENTER_X + Math.cos(angle) * RING_RADIUS;
             double z = CENTER_Z + Math.sin(angle) * RING_RADIUS;
+            //#if MC>=12104
             Villager v = EntityType.VILLAGER.create(world, EntitySpawnReason.EVENT);
+            //#else
+            //$$ Villager v = EntityType.VILLAGER.create(world);
+            //#endif
             if (v == null) continue;
             v.setPos(x, CENTER_Y, z);
             v.setYRot(rng.nextFloat() * 360f);
@@ -61,12 +76,21 @@ public final class EntitiesScenario implements BenchScenario {
         // the server may throttle update rates for a fully idle player.
         if (tick % 100 == 0) {
             Vec3 p = player.position();
+            //#if MC>=12104
             player.teleportTo(
                     (ServerLevel) player.level(),
                     p.x, p.y, p.z,
                     Collections.<Relative>emptySet(),
                     (tick / 100f) * 37f, 0f, false
             );
+            //#else
+            //$$ player.teleportTo(
+            //$$         (ServerLevel) player.level(),
+            //$$         p.x, p.y, p.z,
+            //$$         Collections.<RelativeMovement>emptySet(),
+            //$$         (tick / 100f) * 37f, 0f
+            //$$ );
+            //#endif
         }
     }
 }

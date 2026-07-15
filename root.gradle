@@ -11,12 +11,24 @@ preprocess {
     // conditions can be written as e.g. `//#if MC>=26.1` (= 260100).
     // mappings arg: non-null = obfuscated (joined via intermediary/mojmap),
     // null = unobfuscated (26.1+ ships official names).
+    def mc12001 = createNode('1.20.1', 12001, 'mojang')
+    def mc12101 = createNode('1.21.1', 12101, 'mojang')
+    def mc12104 = createNode('1.21.4', 12104, 'mojang')
+    def mc12106 = createNode('1.21.6', 12106, 'mojang')
+    def mc12110 = createNode('1.21.10', 12110, 'mojang')
     def mc12111 = createNode('1.21.11', 12111, 'mojang')
     def mc26100 = createNode('26.1', 260100, null)
 
     // 26.1 has no intermediary, so this link joins by shared mojang names;
     // renames the auto-remap can't infer go into the extra-mappings file.
     mc26100.link(mc12111, file('versions/mapping-26.1-1.21.11.txt'))
+    // Obfuscated 1.2x versions join pairwise via intermediary, which already
+    // captures renames; extra-mapping files only where the join falls short.
+    mc12111.link(mc12110, null)
+    mc12110.link(mc12106, null)
+    mc12106.link(mc12104, file('versions/mapping-1.21.6-1.21.4.txt'))
+    mc12104.link(mc12101, null)
+    mc12101.link(mc12001, null)
 }
 
 // Aggregates every version's mod jar into the root build/libs for CI.

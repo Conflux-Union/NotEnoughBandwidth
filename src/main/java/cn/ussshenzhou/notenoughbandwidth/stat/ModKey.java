@@ -11,14 +11,20 @@ import org.lwjgl.glfw.GLFW;
 public class ModKey {
     private static KeyMapping statKey;
 
+    //#if MC>=12110
     private static final KeyMapping.Category NEB_CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ModConstants.MOD_ID, "main"));
+    //#endif
 
     public static void register() {
         statKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.neb.stat",
                 GLFW.GLFW_KEY_N,
+                //#if MC>=12110
                 NEB_CATEGORY
+                //#else
+                //$$ "key.categories.neb"
+                //#endif
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

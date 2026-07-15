@@ -162,8 +162,13 @@ public class StatScreen extends Screen {
         context.fill(0, 0, width, height, 0x80000000);
         var tr = this.font;
 
+        //#if MC>=12106
         context.pose().pushMatrix();
         context.pose().translate(0, (float) -scrollOffset);
+        //#else
+        //$$ context.pose().pushPose();
+        //$$ context.pose().translate(0, -scrollOffset, 0);
+        //#endif
 
         // Component stats
         context.text(tr, client, 10, 10, 0xFFFFFFFF, true);
@@ -200,7 +205,11 @@ public class StatScreen extends Screen {
         LineChart.render(context, tr, rightX, chartY, chartW, chartH,
                 SERVER_CHART_SERIES, CHART_COLORS, SERVER_CHART_LABELS);
 
+        //#if MC>=12106
         context.pose().popMatrix();
+        //#else
+        //$$ context.pose().popPose();
+        //#endif
 
         // Scroll indicator when content overflows
         int maxScroll = Math.max(0, CONTENT_HEIGHT - this.height);
