@@ -1,58 +1,51 @@
 name: Release
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.scan.outputs.matrix }}
-      has_releases: ${{ steps.scan.outputs.has_releases }}
-      date_tag: ${{ steps.scan.outputs.date_tag }}
+      mod_version: ${{ steps.meta.outputs.mod_version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      matrix: ${{ steps.meta.outputs.matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Scan versions
-        id: scan
+      - name: Resolve version, tag and matrix
+        id: meta
         run: |
-          DATE_TAG="release-$(date +%Y.%m.%d)"
-          echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
+          MOD_VERSION=$(grep '^mod_version=' gradle.properties | cut -d'=' -f2)
+          if [ -z "$MOD_VERSION" ]; then
+            echo "::error::mod_version not found in root gradle.properties"
+            exit 1
+          fi
+          echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="v$MOD_VERSION"
+            if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "::error::Tag $TAG already exists; bump mod_version in gradle.properties before dispatching."
+              exit 1
+            fi
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
           includes=()
           for props in versions/*/gradle.properties; do
             MC_VERSION=$(basename "$(dirname "$props")")
-            MOD_VERSION=$(grep '^mod_version=' "$props" | cut -d'=' -f2)
-            [ -z "$MOD_VERSION" ] && continue
-            if ! git rev-parse "v$MOD_VERSION" >/dev/null 2>&1; then
-              echo "  queued: $MC_VERSION (v$MOD_VERSION)"
-              includes+=("{\"mc_version\":\"$MC_VERSION\",\"mod_version\":\"$MOD_VERSION\"}")
-            else
-              echo "  skipped: $MC_VERSION (v$MOD_VERSION already tagged)"
-            fi
+            includes+=("{\"mc_version\":\"$MC_VERSION\"}")
           done
-
-          if [ ${#includes[@]} -eq 0 ]; then
-            echo "No versions need releasing."
-            echo "has_releases=false" >> $GITHUB_OUTPUT
-          else
-            printf -v joined '%s,' "${includes[@]}"
-            echo "matrix={\"include\":[${joined%,}]}" >> $GITHUB_OUTPUT
-            echo "has_releases=true" >> $GITHUB_OUTPUT
-          fi
-
-  build:
-    needs: check
-    if: needs.check.outputs.has_releases == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+          printf -v joined '%s,' "${includes[@]}"
+          echo "matrix={\"include\":[${joined%,}]}" >> $GITHUB_OUTPUT
 
       # Per-version Java toolchains (17 for 1.20.1, 21 for 1.21.x, 25 for 26.1+)
       # are auto-provisioned by the foojay resolver declared in settings.gradle.
@@ -66,18 +59,20 @@ jobs:
       - name: Build all versions
         run: ./gradlew build collectJars --no-daemon
 
-      - name: Assemble changelog
+      - name: Generate changelog
         run: |
           mkdir -p /tmp/artifacts
           cp build/libs/*.jar /tmp/artifacts/
           rm -f /tmp/artifacts/*-sources.jar
-          LAST_TAG=$(git tag --list 'release-*' --sort=-creatordate | head -1)
+          # On release events HEAD is the release tag itself; exclude it so the
+          # range spans from the previous tag to the current commit.
+          PREV_TAG=$(git tag --sort=-creatordate | grep -vx "${{ steps.meta.outputs.tag }}" | head -1)
           {
             echo "### Changes"
-            if [ -z "$LAST_TAG" ]; then
+            if [ -z "$PREV_TAG" ]; then
               git log HEAD --pretty=format:"- %s (%h)" --no-merges | head -50
             else
-              git log "${LAST_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
+              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
             fi
             echo ""
           } > /tmp/artifacts/changelog.md
@@ -88,51 +83,36 @@ jobs:
           name: build-all
           path: /tmp/artifacts/
 
-  publish-versions:
-    needs: [check, build]
-    if: needs.check.outputs.has_releases == 'true'
+  publish-modrinth:
+    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     strategy:
-      matrix: ${{ fromJson(needs.check.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.build.outputs.matrix) }}
       fail-fast: false
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: build-all
           path: /tmp/artifacts
 
-      - name: Tag version
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ matrix.mod_version }}"
-          git push origin "v${{ matrix.mod_version }}"
-
       - name: Publish to Modrinth
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           modrinth-id: vD8fMHSr
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          files: /tmp/artifacts/NotEnoughBandwidth-${{ matrix.mod_version }}.jar
-          name: Not Enough Bandwidth ${{ matrix.mod_version }}
-          version: ${{ matrix.mod_version }}
+          files: /tmp/artifacts/NotEnoughBandwidth-${{ needs.build.outputs.mod_version }}+${{ matrix.mc_version }}.jar
+          name: Not Enough Bandwidth ${{ needs.build.outputs.mod_version }} (${{ matrix.mc_version }})
+          version: ${{ needs.build.outputs.mod_version }}+${{ matrix.mc_version }}
           version-type: release
+          changelog-file: /tmp/artifacts/changelog.md
           loaders: fabric
           game-versions: ${{ matrix.mc_version }}
           dependencies: |
             fabric-api(required)
 
-  release:
-    needs: [check, build, publish-versions]
-    if: needs.check.outputs.has_releases == 'true'
+  github-release:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -149,20 +129,21 @@ jobs:
           EOF_MARKER=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64 | tr -d '/+=')
           {
             echo "body<<$EOF_MARKER"
-            echo "## Not Enough Bandwidth"
-            echo ""
             echo "Fabric API required"
             echo ""
             cat /tmp/artifacts/changelog.md
             echo "$EOF_MARKER"
           } >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
+      # On a manually published release this attaches jars and appends the
+      # changelog to the existing release; on workflow_dispatch it creates the
+      # tag and the release from scratch. draft/prerelease/name are left unset
+      # so a user-authored release keeps its own settings and title.
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.check.outputs.date_tag }}
-          name: Not Enough Bandwidth ${{ needs.check.outputs.date_tag }}
+          tag_name: ${{ needs.build.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           body: ${{ steps.body.outputs.body }}
+          append_body: true
           files: /tmp/artifacts/*.jar
-          draft: false
-          prerelease: false
