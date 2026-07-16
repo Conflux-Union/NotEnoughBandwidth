@@ -113,13 +113,18 @@ public class UpdateChecker {
     }
 
     /**
-     * Version format: {@code {mc_version}-{build}}, e.g. {@code 1.21.4-5}.
-     * A trailing {@code +suffix} (e.g. {@code +alpha}) is stripped before comparison.
+     * Version format: dotted numerics, e.g. {@code 1.2.0}. The {@code +<mc>}
+     * build-metadata suffix (e.g. {@code 1.2.0+1.21.4}) is stripped before
+     * comparison. Releases before the unified scheme used {@code {mc_version}-{build}}
+     * (e.g. {@code 1.21.4-5}); those are still recognized so the transition orders
+     * correctly.
      * <p>
      * Returns true when {@code remote} is strictly newer than {@code local}:
      * <ul>
-     *   <li>Same MC-version prefix: compare build numbers numerically.</li>
-     *   <li>Different MC-version prefix: always true (new release for a newer MC version).</li>
+     *   <li>Both dotted: compare segments numerically (missing segments count as 0).</li>
+     *   <li>Dotted vs legacy: the dotted (post-transition) side is newer.</li>
+     *   <li>Both legacy, same MC-version prefix: compare build numbers numerically.</li>
+     *   <li>Both legacy, different MC-version prefix: always true.</li>
      *   <li>Cannot parse: fallback to string inequality.</li>
      * </ul>
      */
@@ -128,6 +133,14 @@ public class UpdateChecker {
         local = local.split("\\+")[0];
 
         if (remote.equals(local)) return false;
+
+        int[] remoteDotted = parseDotted(remote);
+        int[] localDotted = parseDotted(local);
+        if (remoteDotted != null && localDotted != null) {
+            return compareDotted(remoteDotted, localDotted) > 0;
+        }
+        if (remoteDotted != null) return true;
+        if (localDotted != null) return false;
 
         int remoteDash = remote.lastIndexOf('-');
         int localDash = local.lastIndexOf('-');
@@ -145,6 +158,30 @@ public class UpdateChecker {
         }
 
         return true;
+    }
+
+    /**
+     * Parses {@code X.Y.Z}-style versions; returns null if any segment is not a
+     * plain integer (which also rejects legacy {@code {mc}-{build}} strings).
+     */
+    private static int[] parseDotted(String s) {
+        String[] segments = s.split("\\.");
+        int[] parts = new int[segments.length];
+        for (int i = 0; i < segments.length; i++) {
+            int v = parseBuild(segments[i]);
+            if (v < 0) return null;
+            parts[i] = v;
+        }
+        return parts;
+    }
+
+    private static int compareDotted(int[] a, int[] b) {
+        for (int i = 0; i < Math.max(a.length, b.length); i++) {
+            int ai = i < a.length ? a[i] : 0;
+            int bi = i < b.length ? b[i] : 0;
+            if (ai != bi) return Integer.compare(ai, bi);
+        }
+        return 0;
     }
 
     private static int parseBuild(String s) {

@@ -39,7 +39,9 @@ preprocess {
     patternAnnotation.set('cn.ussshenzhou.notenoughbandwidth.util.Pattern')
 }
 
-version = project.mod_version
+// mod_version is global (root gradle.properties); the +<mc> suffix keeps the
+// seven jars distinct when collectJars gathers them into one directory.
+version = "${project.mod_version}+${project.name}"
 group = project.maven_group
 
 base {
