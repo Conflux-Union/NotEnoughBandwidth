@@ -18,7 +18,7 @@ pluginManagement {
 }
 
 plugins {
-    // Auto-provisions the JDK 21/25 toolchains when they are not installed (mainly CI).
+    // Auto-provisions the JDK 17/21/25 toolchains when they are not installed (mainly CI).
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 

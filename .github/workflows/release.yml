@@ -54,8 +54,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Per-version Java toolchains (21 for 1.21.x, 25 for 26.1+) are
-      # auto-provisioned by the foojay resolver declared in settings.gradle.
+      # Per-version Java toolchains (17 for 1.20.1, 21 for 1.21.x, 25 for 26.1+)
+      # are auto-provisioned by the foojay resolver declared in settings.gradle.
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
