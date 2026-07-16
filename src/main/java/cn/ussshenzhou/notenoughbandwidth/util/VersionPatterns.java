@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.util;
 
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
 
 /**
@@ -37,6 +38,24 @@ final class VersionPatterns {
         return ChunkPos.unpack(packed);
         //#else
         //$$ return new ChunkPos(packed);
+        //#endif
+    }
+
+    @Pattern
+    private static Identifier identifierOf(String namespace, String path) {
+        //#if MC>=12100
+        return Identifier.fromNamespaceAndPath(namespace, path);
+        //#else
+        //$$ return new ResourceLocation(namespace, path);
+        //#endif
+    }
+
+    @Pattern
+    private static Identifier vanillaIdentifierOf(String path) {
+        //#if MC>=12100
+        return Identifier.withDefaultNamespace(path);
+        //#else
+        //$$ return new ResourceLocation("minecraft", path);
         //#endif
     }
 }

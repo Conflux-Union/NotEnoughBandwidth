@@ -12,11 +12,17 @@ import cn.ussshenzhou.notenoughbandwidth.zstd.ZstdHelper;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.Connection;
-import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.FriendlyByteBuf;
+//#if MC>=12005
+import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+//#else
+//$$ import io.netty.util.AttributeKey;
+//$$ import net.minecraft.network.protocol.PacketFlow;
+//$$ import net.minecraft.server.RunningOnDifferentThreadException;
+//#endif
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
@@ -24,9 +30,18 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 
+//#if MC>=12005
 public class PacketAggregationPacket implements CustomPacketPayload {
+//#else
+//$$ /**
+//$$  * On 1.20.1 this is not a CustomPacketPayload — it's serialized manually and
+//$$  * wrapped in a Clientbound/ServerboundCustomPayloadPacket by the caller.
+//$$  */
+//$$ public class PacketAggregationPacket {
+//#endif
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Aggregation");
 
+    //#if MC>=12005
     public static final Type<PacketAggregationPacket> TYPE =
             new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(ModConstants.NETWORK_NAMESPACE, "packet_aggregation_packet"));
 
@@ -37,15 +52,31 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
         return TYPE;
     }
+    //#else
+    //$$ public static final ResourceLocation CHANNEL =
+    //$$         new ResourceLocation(ModConstants.NETWORK_NAMESPACE, "packet_aggregation_packet");
+    //$$
+    //$$ /**
+    //$$  * Passes baked (compressed) size from write() to the encoder mixin via a
+    //$$  * Netty channel attribute — safe across threads (flush thread vs event loop).
+    //$$  */
+    //$$ public static final AttributeKey<Integer> BAKED_SIZE_KEY =
+    //$$         AttributeKey.valueOf("neb_last_baked_size");
+    //#endif
 
     private int bakedSize;
     private int innerBlobSize;
 
     // ---- encode side ----
     private final ArrayList<AggregatedEncodePacket> packetsToEncode;
+    //#if MC>=12005
     private final ProtocolInfo<?> protocolInfo;
+    //#else
+    //$$ private final PacketFlow flow;
+    //#endif
     private Connection connection;
 
+    //#if MC>=12005
     public PacketAggregationPacket(ArrayList<AggregatedEncodePacket> packetsToEncode,
                                    ProtocolInfo<?> protocolInfo,
                                    Connection connection) {
@@ -53,10 +84,25 @@ public class PacketAggregationPacket implements CustomPacketPayload {
         this.protocolInfo = protocolInfo;
         this.connection = connection;
     }
+    //#else
+    //$$ public PacketAggregationPacket(ArrayList<AggregatedEncodePacket> packetsToEncode,
+    //$$                                PacketFlow flow,
+    //$$                                Connection connection) {
+    //$$     this.packetsToEncode = packetsToEncode;
+    //$$     this.flow = flow;
+    //$$     this.connection = connection;
+    //$$ }
+    //#endif
 
+    //#if MC>=12005
     public void write(RegistryFriendlyByteBuf buffer) {
         int blobStartIdx = buffer.writerIndex();
         var rawBuf = new RegistryFriendlyByteBuf(ByteBufAllocator.DEFAULT.buffer(), buffer.registryAccess());
+    //#else
+    //$$ public void write(FriendlyByteBuf buffer) {
+    //$$     int blobStartIdx = buffer.writerIndex();
+    //$$     var rawBuf = new FriendlyByteBuf(ByteBufAllocator.DEFAULT.buffer());
+    //#endif
         try {
             int[] subRawSizes = new int[packetsToEncode.size()];
             int prevWriterIdx = rawBuf.writerIndex();
@@ -93,6 +139,9 @@ public class PacketAggregationPacket implements CustomPacketPayload {
                 buffer.writeBytes(rawBuf);
                 this.bakedSize = rawSize;
             }
+            //#if MC<12005
+            //$$ connection.channel.attr(BAKED_SIZE_KEY).set(this.bakedSize);
+            //#endif
             SimpleStatManager.outRaw(rawSize);
             this.innerBlobSize = buffer.writerIndex() - blobStartIdx;
             recordPerTypeOut(subRawSizes, rawSize, this.innerBlobSize);
@@ -103,7 +152,11 @@ public class PacketAggregationPacket implements CustomPacketPayload {
 
     private void recordPerTypeOut(int[] subRawSizes, int rawSize, int bakedSize) {
         if (rawSize <= 0 || subRawSizes.length == 0) return;
-        var flow = protocolInfo.flow();
+        //#if MC>=12005
+        var direction = protocolInfo.flow();
+        //#else
+        //$$ var direction = this.flow;
+        //#endif
         long allocatedBaked = 0;
         for (int i = 0; i < subRawSizes.length; i++) {
             long subBaked;
@@ -114,15 +167,23 @@ public class PacketAggregationPacket implements CustomPacketPayload {
                 subBaked = (long) Math.floor((double) subRawSizes[i] * bakedSize / rawSize);
                 allocatedBaked += subBaked;
             }
-            PacketTypeStatManager.record(flow, packetsToEncode.get(i).type, subRawSizes[i], subBaked);
+            PacketTypeStatManager.record(direction, packetsToEncode.get(i).type, subRawSizes[i], subBaked);
         }
     }
 
+    //#if MC>=12005
     private void encodeSubPacket(RegistryFriendlyByteBuf raw, AggregatedEncodePacket packet) {
         CustomPacketPrefixHelper.write(packet.type, raw);
         var d = new RegistryFriendlyByteBuf(ByteBufAllocator.DEFAULT.buffer(), raw.registryAccess());
         try {
             packet.encode(d, protocolInfo, protocolInfo.flow());
+    //#else
+    //$$ private void encodeSubPacket(FriendlyByteBuf raw, AggregatedEncodePacket packet) {
+    //$$     CustomPacketPrefixHelper.write(packet.type, raw);
+    //$$     var d = new FriendlyByteBuf(ByteBufAllocator.DEFAULT.buffer());
+    //$$     try {
+    //$$         packet.encode(d, flow);
+    //#endif
             raw.writeVarInt(d.readableBytes());
             raw.writeBytes(d);
         } finally {
@@ -131,6 +192,7 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     }
 
     // ---- decode side ----
+    //#if MC>=12005
     private RegistryFriendlyByteBuf data;
 
     public PacketAggregationPacket(RegistryFriendlyByteBuf buffer) {
@@ -140,8 +202,25 @@ public class PacketAggregationPacket implements CustomPacketPayload {
         this.data = new RegistryFriendlyByteBuf(buffer.retainedDuplicate(), buffer.registryAccess());
         buffer.readerIndex(buffer.writerIndex());
     }
+    //#else
+    //$$ private FriendlyByteBuf data;
+    //$$
+    //$$ private PacketAggregationPacket(FriendlyByteBuf buffer) {
+    //$$     this.flow = null;
+    //$$     this.packetsToEncode = null;
+    //$$     // Take direct ownership of the buffer — caller is responsible for
+    //$$     // passing us a buf we can own (e.g. buf.copy()).
+    //$$     this.innerBlobSize = buffer.readableBytes();
+    //$$     this.data = buffer;
+    //$$ }
+    //$$
+    //$$ public static PacketAggregationPacket read(FriendlyByteBuf buffer) {
+    //$$     return new PacketAggregationPacket(buffer);
+    //$$ }
+    //#endif
 
     // ---- handle side ----
+    //#if MC>=12005
     @SuppressWarnings({"rawtypes", "unchecked"})
     public void handle(Connection conn) {
         this.connection = conn;
@@ -209,6 +288,78 @@ public class PacketAggregationPacket implements CustomPacketPayload {
             }
         }
     }
+    //#else
+    //$$ @SuppressWarnings({"rawtypes", "unchecked"})
+    //$$ public void handle(Connection conn) {
+    //$$     this.connection = conn;
+    //$$
+    //$$     boolean compressed = data.readBoolean();
+    //$$     FriendlyByteBuf raw;
+    //$$     if (compressed) {
+    //$$         int size = data.readVarInt();
+    //$$         raw = new FriendlyByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size));
+    //$$     } else {
+    //$$         raw = new FriendlyByteBuf(data.retain());
+    //$$     }
+    //$$     SimpleStatManager.inRaw(raw.readableBytes());
+    //$$
+    //$$     var decoder = DefaultChannelPipelineHelper.getPacketDecoder(
+    //$$             (DefaultChannelPipeline) conn.channel.pipeline());
+    //$$     if (decoder == null) {
+    //$$         LOGGER.error("Failed to get PacketDecoder for inbound protocol");
+    //$$         data.release();
+    //$$         raw.release();
+    //$$         return;
+    //$$     }
+    //$$     // Access-widened PacketDecoder.flow gives the inbound direction.
+    //$$     PacketFlow decoderFlow = decoder.flow;
+    //$$     var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
+    //$$     var subRawSizes = new ArrayList<Integer>();
+    //$$     int totalSubRaw = 0;
+    //$$     try {
+    //$$         int prevReaderIdx = raw.readerIndex();
+    //$$         while (raw.readableBytes() > 0) {
+    //$$             var type = CustomPacketPrefixHelper.read(raw);
+    //$$             var size = raw.readVarInt();
+    //$$             var subData = new FriendlyByteBuf(raw.readRetainedSlice(size));
+    //$$             int newIdx = raw.readerIndex();
+    //$$             int subRaw = newIdx - prevReaderIdx;
+    //$$             prevReaderIdx = newIdx;
+    //$$             if (type == null) {
+    //$$                 LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
+    //$$                 subData.release();
+    //$$                 continue;
+    //$$             }
+    //$$             packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+    //$$             subRawSizes.add(subRaw);
+    //$$             totalSubRaw += subRaw;
+    //$$         }
+    //$$     } finally {
+    //$$         data.release();
+    //$$         raw.release();
+    //$$     }
+    //$$
+    //$$     recordPerTypeIn(decoderFlow, packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
+    //$$
+    //$$     for (var sub : packetsToHandle) {
+    //$$         try {
+    //$$             Packet<?> decoded = sub.decode(decoderFlow);
+    //$$             if (decoded != null) {
+    //$$                 var listener = conn.getPacketListener();
+    //$$                 if (listener != null) {
+    //$$                     ((Packet) decoded).handle(listener);
+    //$$                 }
+    //$$             }
+    //$$         } catch (RunningOnDifferentThreadException e) {
+    //$$             // Expected: the packet re-scheduled itself onto the main thread.
+    //$$         } catch (Exception e) {
+    //$$             LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
+    //$$         } finally {
+    //$$             sub.getData().release();
+    //$$         }
+    //$$     }
+    //$$ }
+    //#endif
 
     private static void recordPerTypeIn(net.minecraft.network.protocol.PacketFlow flow,
                                         ArrayList<AggregatedDecodePacket> sub,

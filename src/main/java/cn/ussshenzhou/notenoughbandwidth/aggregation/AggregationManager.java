@@ -6,11 +6,21 @@ import cn.ussshenzhou.notenoughbandwidth.util.PacketUtil;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.channel.DefaultChannelPipeline;
 import net.minecraft.network.Connection;
-import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.Packet;
+//#if MC>=12005
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+//#else
+//$$ import io.netty.buffer.ByteBufAllocator;
+//$$ import net.minecraft.network.FriendlyByteBuf;
+//$$ import net.minecraft.network.PacketListener;
+//$$ import net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket;
+//$$ import net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket;
+//$$ import net.minecraft.network.protocol.game.ServerGamePacketListener;
+//$$ import net.minecraft.network.protocol.game.ClientGamePacketListener;
+//#endif
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,18 +119,49 @@ public class AggregationManager {
         }
     }
 
+    //#if MC<12005
+    //$$ /**
+    //$$  * PLAY-phase check without PacketListener.protocol(), which doesn't exist on
+    //$$  * 1.20.1. The PLAY listener interfaces live in the common jar, so this is
+    //$$  * safe on a dedicated server and survives intermediary remapping in production
+    //$$  * (unlike a class-name string comparison).
+    //$$  */
+    //$$ private static boolean isPlayPhase(PacketListener listener) {
+    //$$     return listener instanceof ServerGamePacketListener || listener instanceof ClientGamePacketListener;
+    //$$ }
+    //$$
+    //$$ /** Vanilla 1.20.1 custom payload size limits enforced by the packet readers. */
+    //$$ private static final int MAX_C2S_PAYLOAD = 32767;
+    //$$ private static final int MAX_S2C_PAYLOAD = 1048576;
+    //#endif
+
     private static void flushInternal(Connection connection, @Nullable ArrayList<AggregatedEncodePacket> packets) {
         try {
             if (packets == null || packets.isEmpty()) {
                 return;
             }
             var listener = connection.getPacketListener();
+            //#if MC>=12005
             if (!connection.isConnected() || listener == null
                     || listener.protocol() != ConnectionProtocol.PLAY
                     || !NebConnectionRegistry.isEnabled(connection)) {
                 packets.clear();
                 return;
             }
+            //#else
+            //$$ if (!connection.isConnected() || listener == null || !isPlayPhase(listener)) {
+            //$$     packets.clear();
+            //$$     return;
+            //$$ }
+            //$$ if (NebConnectionRegistry.isPending(connection)) {
+            //$$     // Handshake in progress — keep packets buffered until NebAck arrives.
+            //$$     return;
+            //$$ }
+            //$$ if (!NebConnectionRegistry.isEnabled(connection)) {
+            //$$     packets.clear();
+            //$$     return;
+            //$$ }
+            //#endif
             var encoder = DefaultChannelPipelineHelper.getPacketEncoder(
                     (DefaultChannelPipeline) connection.channel.pipeline());
             if (encoder == null) {
@@ -130,6 +171,7 @@ public class AggregationManager {
             }
             var sendPackets = new ArrayList<>(packets);
             packets.clear();
+            //#if MC>=12005
             var aggregationPayload = new PacketAggregationPacket(
                     sendPackets, encoder.protocolInfo, connection);
             // encoder.protocolInfo.flow() = outbound direction (CLIENTBOUND on server, SERVERBOUND on client)
@@ -138,8 +180,46 @@ public class AggregationManager {
                     : new ServerboundCustomPayloadPacket(aggregationPayload);
             connection.send(wrapper);
             connection.flushChannel();
+            //#else
+            //$$ // Access-widened PacketEncoder.flow gives the outbound direction.
+            //$$ PacketFlow encoderFlow = encoder.flow;
+            //$$ int maxPayload = encoderFlow == PacketFlow.CLIENTBOUND ? MAX_S2C_PAYLOAD : MAX_C2S_PAYLOAD;
+            //$$ sendBatched(connection, sendPackets, encoderFlow, maxPayload);
+            //#endif
         } catch (Exception e) {
             LOGGER.error("Skipped: Failed to flush packets.", e);
         }
     }
+
+    //#if MC<12005
+    //$$ /**
+    //$$  * 1.20.1's CustomPayload packets enforce hard size limits at read time, so an
+    //$$  * oversized aggregate must be split. Serialization is cheap relative to the
+    //$$  * network, and Context uses stateless compression on 1.20.1, so re-encoding
+    //$$  * the halves is safe (no shared stream state is corrupted by the discarded
+    //$$  * oversized attempt).
+    //$$  */
+    //$$ private static void sendBatched(Connection connection,
+    //$$                                 ArrayList<AggregatedEncodePacket> batch,
+    //$$                                 PacketFlow encoderFlow, int maxPayload) {
+    //$$     if (batch.isEmpty()) return;
+    //$$
+    //$$     var aggregationPayload = new PacketAggregationPacket(batch, encoderFlow, connection);
+    //$$     FriendlyByteBuf buf = new FriendlyByteBuf(ByteBufAllocator.DEFAULT.buffer());
+    //$$     aggregationPayload.write(buf);
+    //$$
+    //$$     if (buf.readableBytes() <= maxPayload || batch.size() == 1) {
+    //$$         Packet<?> wrapper = encoderFlow == PacketFlow.CLIENTBOUND
+    //$$                 ? new ClientboundCustomPayloadPacket(PacketAggregationPacket.CHANNEL, buf)
+    //$$                 : new ServerboundCustomPayloadPacket(PacketAggregationPacket.CHANNEL, buf);
+    //$$         connection.send(wrapper);
+    //$$         connection.channel.flush();
+    //$$     } else {
+    //$$         buf.release();
+    //$$         int mid = batch.size() / 2;
+    //$$         sendBatched(connection, new ArrayList<>(batch.subList(0, mid)), encoderFlow, maxPayload);
+    //$$         sendBatched(connection, new ArrayList<>(batch.subList(mid, batch.size())), encoderFlow, maxPayload);
+    //$$     }
+    //$$ }
+    //#endif
 }

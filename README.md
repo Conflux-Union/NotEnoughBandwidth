@@ -133,13 +133,11 @@ Whether to strip chunk light data from server chunk packets and recompute it on 
 ## Installation
 
 Requires:
-- Minecraft 1.21.1 – 26.1 (download the jar matching your version)
-- Fabric Loader (>= 0.16 on 1.21.1, >= 0.18.4 on 26.1)
+- Minecraft 1.20.1, 1.21.1 – 26.1 (download the jar matching your version)
+- Fabric Loader (>= 0.15 on 1.20.1, >= 0.16 on 1.21.1, >= 0.18.4 on 26.1)
 - Fabric API
 
 **Both client and server must install NEB.** When a client without NEB connects, the server falls back to vanilla behavior for that connection.
-
-Minecraft 1.20.1 is maintained separately on the `1.20.1` branch.
 
 ## Development
 

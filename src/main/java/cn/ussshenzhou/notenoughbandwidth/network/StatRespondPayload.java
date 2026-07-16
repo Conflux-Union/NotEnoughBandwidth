@@ -1,10 +1,14 @@
 package cn.ussshenzhou.notenoughbandwidth.network;
 
 import cn.ussshenzhou.notenoughbandwidth.ModConstants;
+//#if MC>=12005
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+//#else
+//$$ import net.minecraft.network.FriendlyByteBuf;
+//#endif
 import net.minecraft.resources.Identifier;
 
 public record StatRespondPayload(
@@ -24,6 +28,7 @@ public record StatRespondPayload(
         long chunkCacheSavedBytes,
         long nicInboundSpeed,
         long nicOutboundSpeed
+//#if MC>=12005
 ) implements CustomPacketPayload {
     public static final Type<StatRespondPayload> TYPE =
             new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(ModConstants.NETWORK_NAMESPACE, "stat_resp"));
@@ -77,3 +82,48 @@ public record StatRespondPayload(
         return TYPE;
     }
 }
+//#else
+//$$ ) {
+//$$     public static final ResourceLocation CHANNEL = new ResourceLocation(ModConstants.NETWORK_NAMESPACE, "stat_resp");
+//$$
+//$$     public void write(FriendlyByteBuf buf) {
+//$$         buf.writeLong(inboundBytesBaked);
+//$$         buf.writeLong(inboundBytesRaw);
+//$$         buf.writeLong(outboundBytesBaked);
+//$$         buf.writeLong(outboundBytesRaw);
+//$$         buf.writeDouble(inboundSpeedBaked);
+//$$         buf.writeDouble(inboundSpeedRaw);
+//$$         buf.writeDouble(outboundSpeedBaked);
+//$$         buf.writeDouble(outboundSpeedRaw);
+//$$         buf.writeVarInt(dictSize);
+//$$         buf.writeVarInt(dictSampleCount);
+//$$         buf.writeVarInt(dictSampleThreshold);
+//$$         buf.writeLong(chunkCacheHits);
+//$$         buf.writeLong(chunkCacheMisses);
+//$$         buf.writeLong(chunkCacheSavedBytes);
+//$$         buf.writeLong(nicInboundSpeed);
+//$$         buf.writeLong(nicOutboundSpeed);
+//$$     }
+//$$
+//$$     public static StatRespondPayload read(FriendlyByteBuf buf) {
+//$$         return new StatRespondPayload(
+//$$                 buf.readLong(),
+//$$                 buf.readLong(),
+//$$                 buf.readLong(),
+//$$                 buf.readLong(),
+//$$                 buf.readDouble(),
+//$$                 buf.readDouble(),
+//$$                 buf.readDouble(),
+//$$                 buf.readDouble(),
+//$$                 buf.readVarInt(),
+//$$                 buf.readVarInt(),
+//$$                 buf.readVarInt(),
+//$$                 buf.readLong(),
+//$$                 buf.readLong(),
+//$$                 buf.readLong(),
+//$$                 buf.readLong(),
+//$$                 buf.readLong()
+//$$         );
+//$$     }
+//$$ }
+//#endif

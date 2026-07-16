@@ -52,7 +52,13 @@ public class StatScreen extends Screen {
         super.tick();
         if (tick % 10 == 0) {
             try {
+                //#if MC>=12005
                 ClientPlayNetworking.send(new StatQueryPayload());
+                //#else
+                //$$ var buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+                //$$ new StatQueryPayload().write(buf);
+                //$$ ClientPlayNetworking.send(StatQueryPayload.CHANNEL, buf);
+                //#endif
             } catch (Exception ignored) {
             }
             actualC = "↓ Inbound  "
@@ -148,9 +154,15 @@ public class StatScreen extends Screen {
         tick++;
     }
 
+    //#if MC>=12002
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         scrollOffset -= verticalAmount * SCROLL_SPEED;
+    //#else
+    //$$ @Override
+    //$$ public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+    //$$     scrollOffset -= amount * SCROLL_SPEED;
+    //#endif
         int maxScroll = Math.max(0, CONTENT_HEIGHT - this.height);
         scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
         return true;

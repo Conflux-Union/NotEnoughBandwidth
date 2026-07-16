@@ -1,0 +1,14 @@
+accessWidener v2 named
+
+# PacketEncoder / PacketDecoder outbound/inbound direction field
+# (1.20.1 predates ProtocolInfo; the encoder/decoder only carry a PacketFlow.)
+accessible field net/minecraft/network/PacketEncoder flow Lnet/minecraft/network/protocol/PacketFlow;
+accessible field net/minecraft/network/PacketDecoder flow Lnet/minecraft/network/protocol/PacketFlow;
+
+# Connection channel field
+accessible field net/minecraft/network/Connection channel Lio/netty/channel/Channel;
+
+# Game packet listener connection field
+# (1.20.1 predates ServerCommonPacketListenerImpl; the field lives on the
+#  game listener itself and is package-private.)
+accessible field net/minecraft/server/network/ServerGamePacketListenerImpl connection Lnet/minecraft/network/Connection;

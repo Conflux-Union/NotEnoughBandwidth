@@ -1,14 +1,23 @@
 package cn.ussshenzhou.notenoughbandwidth.aggregation;
 
 import io.netty.buffer.ByteBuf;
+//#if MC>=12005
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.PacketFlow;
+//#else
+//$$ import cn.ussshenzhou.notenoughbandwidth.indextype.NamespaceIndexManager;
+//$$ import net.minecraft.network.ConnectionProtocol;
+//$$ import net.minecraft.network.FriendlyByteBuf;
+//$$ import net.minecraft.network.protocol.PacketFlow;
+//$$ import net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket;
+//$$ import net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket;
+//#endif
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,10 +25,14 @@ import org.slf4j.LoggerFactory;
 /**
  * Wraps a single sub-packet slice extracted from an aggregated blob for decoding.
  * <p>
- * Dispatch rule: if {@code type} matches a Fabric-registered custom payload,
- * decode the payload bytes via its registered codec and wrap in the appropriate
- * {@code *CustomPayloadPacket}. Otherwise treat the slice as a vanilla packet
- * body prefixed with its VarInt id and let {@link ProtocolInfo#codec()} decode it.
+ * On 1.20.5+: if {@code type} matches a Fabric-registered custom payload, decode
+ * the payload bytes via its registered codec and wrap in the appropriate
+ * {@code *CustomPayloadPacket}; otherwise treat the slice as a vanilla packet
+ * body prefixed with its VarInt id and let {@code ProtocolInfo.codec()} decode it.
+ * <p>
+ * On 1.20.1: vanilla packets are reconstructed via
+ * {@code ConnectionProtocol.PLAY.createPacket()} using the int id resolved by
+ * {@code NamespaceIndexManager}; custom payloads are re-wrapped raw.
  */
 public class AggregatedDecodePacket {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Decode");
@@ -32,6 +45,7 @@ public class AggregatedDecodePacket {
         this.data = data;
     }
 
+    //#if MC>=12005
     public Packet<?> decode(ProtocolInfo<?> protocolInfo) {
         PacketFlow side = protocolInfo.flow();
         var registry = side == PacketFlow.CLIENTBOUND
@@ -71,6 +85,42 @@ public class AggregatedDecodePacket {
             return null;
         }
     }
+    //#else
+    //$$ public Packet<?> decode(PacketFlow side) {
+    //$$     Integer vanillaId = NamespaceIndexManager.getVanillaPacketId(type, side);
+    //$$     if (vanillaId != null) {
+    //$$         return decodeVanilla(side, vanillaId);
+    //$$     }
+    //$$     return decodeCustom(side);
+    //$$ }
+    //$$
+    //$$ private Packet<?> decodeVanilla(PacketFlow side, int id) {
+    //$$     FriendlyByteBuf pBuf = new FriendlyByteBuf(data);
+    //$$     try {
+    //$$         return ConnectionProtocol.PLAY.createPacket(side, id, pBuf);
+    //$$     } catch (Exception e) {
+    //$$         LOGGER.error("Skipped: Failed to decode packet {} (id={})", type, id, e);
+    //$$         return null;
+    //$$     }
+    //$$ }
+    //$$
+    //$$ private Packet<?> decodeCustom(PacketFlow side) {
+    //$$     if (side == PacketFlow.CLIENTBOUND) {
+    //$$         // S2C: copy() gives the packet an independent heap buf.
+    //$$         // The caller's finally { sub.getData().release() } frees the
+    //$$         // original slice, and the copy is GC'd with the packet.
+    //$$         // We can't just retain() here because ClientboundCustomPayloadPacket
+    //$$         // never releases its data — getData() returns data.copy(),
+    //$$         // not the original, so the extra refCnt would leak.
+    //$$         return new ClientboundCustomPayloadPacket(type, new FriendlyByteBuf(data.copy()));
+    //$$     }
+    //$$     // C2S: retain once so the caller's finally block can safely release.
+    //$$     // ServerboundCustomPayloadPacket.handle() releases data after
+    //$$     // onCustomPayload() returns, bringing refCnt back to 0.
+    //$$     data.retain();
+    //$$     return new ServerboundCustomPayloadPacket(type, new FriendlyByteBuf(data));
+    //$$ }
+    //#endif
 
     public Identifier getType() {
         return type;

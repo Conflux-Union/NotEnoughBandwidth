@@ -135,52 +135,54 @@ public final class ChunkHashUtil {
         }
         // 26.1: getType() returns TagType<?>, not byte. Use getId() for the tag-type byte.
         hasher.putByte(element.getId());
-        switch (element) {
-            case CompoundTag c -> {
-                var keys = new ArrayList<>(c.keySet());
-                Collections.sort(keys);
-                hasher.putInt(keys.size());
-                for (var key : keys) {
-                    hasher.putInt(key.length());
-                    hasher.putString(key, StandardCharsets.UTF_8);
-                    hashNbtElement(hasher, c.get(key));
-                }
+        // instanceof chain instead of a pattern switch: 1.20.1 compiles with --release 17,
+        // which predates pattern matching for switch.
+        if (element instanceof CompoundTag c) {
+            var keys = new ArrayList<>(c.keySet());
+            Collections.sort(keys);
+            hasher.putInt(keys.size());
+            for (var key : keys) {
+                hasher.putInt(key.length());
+                hasher.putString(key, StandardCharsets.UTF_8);
+                hashNbtElement(hasher, c.get(key));
             }
-            case ListTag l -> {
-                hasher.putInt(l.size());
-                for (var e : l) hashNbtElement(hasher, e);
-            }
-            case ByteTag b -> hasher.putByte(b.byteValue());
-            case ShortTag s -> hasher.putShort(s.shortValue());
-            case IntTag i -> hasher.putInt(i.intValue());
-            case LongTag l -> hasher.putLong(l.longValue());
-            case FloatTag f -> hasher.putFloat(f.floatValue());
-            case DoubleTag d -> hasher.putDouble(d.doubleValue());
-            case StringTag s -> {
-                //#if MC>=12106
-                String val = s.value();
-                //#else
-                //$$ String val = s.getAsString();
-                //#endif
-                hasher.putInt(val.length());
-                hasher.putString(val, StandardCharsets.UTF_8);
-            }
-            case ByteArrayTag a -> {
-                byte[] raw = a.getAsByteArray();
-                hasher.putInt(raw.length);
-                for (byte b : raw) hasher.putByte(b);
-            }
-            case IntArrayTag a -> {
-                int[] raw = a.getAsIntArray();
-                hasher.putInt(raw.length);
-                for (int i : raw) hasher.putInt(i);
-            }
-            case LongArrayTag a -> {
-                long[] raw = a.getAsLongArray();
-                hasher.putInt(raw.length);
-                for (long l : raw) hasher.putLong(l);
-            }
-            default -> LOGGER.warn("Unknown NBT type id={} in chunk hash, hash may be unstable", element.getId());
+        } else if (element instanceof ListTag l) {
+            hasher.putInt(l.size());
+            for (var e : l) hashNbtElement(hasher, e);
+        } else if (element instanceof ByteTag b) {
+            hasher.putByte(b.byteValue());
+        } else if (element instanceof ShortTag s) {
+            hasher.putShort(s.shortValue());
+        } else if (element instanceof IntTag i) {
+            hasher.putInt(i.intValue());
+        } else if (element instanceof LongTag l) {
+            hasher.putLong(l.longValue());
+        } else if (element instanceof FloatTag f) {
+            hasher.putFloat(f.floatValue());
+        } else if (element instanceof DoubleTag d) {
+            hasher.putDouble(d.doubleValue());
+        } else if (element instanceof StringTag s) {
+            //#if MC>=12106
+            String val = s.value();
+            //#else
+            //$$ String val = s.getAsString();
+            //#endif
+            hasher.putInt(val.length());
+            hasher.putString(val, StandardCharsets.UTF_8);
+        } else if (element instanceof ByteArrayTag a) {
+            byte[] raw = a.getAsByteArray();
+            hasher.putInt(raw.length);
+            for (byte b : raw) hasher.putByte(b);
+        } else if (element instanceof IntArrayTag a) {
+            int[] raw = a.getAsIntArray();
+            hasher.putInt(raw.length);
+            for (int i : raw) hasher.putInt(i);
+        } else if (element instanceof LongArrayTag a) {
+            long[] raw = a.getAsLongArray();
+            hasher.putInt(raw.length);
+            for (long l : raw) hasher.putLong(l);
+        } else {
+            LOGGER.warn("Unknown NBT type id={} in chunk hash, hash may be unstable", element.getId());
         }
     }
 }

@@ -9,6 +9,11 @@ import net.minecraft.world.level.ChunkPos;
 //#if MC>=12106
 import net.minecraft.world.level.TicketStorage;
 //#endif
+//#if MC<12002
+//$$ import org.spongepowered.asm.mixin.injection.At;
+//$$ import org.spongepowered.asm.mixin.injection.Inject;
+//$$ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+//#endif
 import org.spongepowered.asm.mixin.*;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,6 +32,7 @@ public abstract class ChunkMapMixin {
     //$$ private static final AtomicReference<TicketType<ChunkPos>> nebDccTicket = new AtomicReference<>();
     //#endif
 
+    //#if MC>=12002
     @Shadow
     int getPlayerViewDistance(ServerPlayer player) { throw new AssertionError(); }
 
@@ -88,4 +94,40 @@ public abstract class ChunkMapMixin {
             }
         });
     }
+    //#else
+    //$$ @Shadow
+    //$$ int viewDistance;
+    //$$
+    //$$ /**
+    //$$  * 1.20.1 has no ChunkTrackingView/updateChunkTracking. Vanilla's own
+    //$$  * move()/sendWatchPackets handles chunk data delivery — DCC just keeps
+    //$$  * recently-left chunks loaded a bit longer via region tickets so a
+    //$$  * returning player gets them resent instantly.
+    //$$  */
+    //$$ @Inject(method = "move", at = @At("HEAD"))
+    //$$ private void nebDccMove(ServerPlayer player, CallbackInfo ci) {
+    //$$     if (player.level() != this.level) {
+    //$$         return;
+    //$$     }
+    //$$     CachedChunkTrackingView.onUpdateChunkTracking(player, viewDistance, (pos, ticks) -> {
+    //$$         var ticketType = nebDccTicket.get();
+    //$$         if (ticketType == null || ticketType.timeout() != ticks) {
+    //$$             var newType = TicketType.<ChunkPos>create("neb_dcc",
+    //$$                     java.util.Comparator.comparingLong(ChunkPos::toLong), ticks);
+    //$$             nebDccTicket.compareAndSet(ticketType, newType);
+    //$$             ticketType = nebDccTicket.get();
+    //$$         }
+    //$$         // radius 0 => ticket level 33 (border-full), enough to keep the chunk sendable
+    //$$         level.getChunkSource().addRegionTicket(ticketType, pos, 0, pos);
+    //$$     });
+    //$$ }
+    //$$
+    //$$ /** Clean up per-player DCC state when a player is removed. */
+    //$$ @Inject(method = "updatePlayerStatus", at = @At("HEAD"))
+    //$$ private void nebDccPlayerRemoved(ServerPlayer player, boolean added, CallbackInfo ci) {
+    //$$     if (!added) {
+    //$$         CachedChunkTrackingView.removePlayer(player);
+    //$$     }
+    //$$ }
+    //#endif
 }

@@ -6,7 +6,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
+//#if MC>=12005
 import net.minecraft.client.multiplayer.TransferState;
+//#endif
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +63,7 @@ public final class BenchClientAutoJoin {
 
     private static void connect(Minecraft client, String host, int port) {
         try {
+            //#if MC>=12005
             ServerData info = new ServerData("NEB Bench Server", host + ":" + port, ServerData.Type.OTHER);
             ConnectScreen.startConnecting(
                     new TitleScreen(),
@@ -70,6 +73,16 @@ public final class BenchClientAutoJoin {
                     false,
                     (TransferState) null
             );
+            //#else
+            //$$ ServerData info = new ServerData("NEB Bench Server", host + ":" + port, false);
+            //$$ ConnectScreen.startConnecting(
+            //$$         new TitleScreen(),
+            //$$         client,
+            //$$         ServerAddress.parseString(host + ":" + port),
+            //$$         info,
+            //$$         false
+            //$$ );
+            //#endif
             LOGGER.info("BenchClientAutoJoin: ConnectScreen.connect dispatched to {}:{}", host, port);
         } catch (Throwable t) {
             LOGGER.error("BenchClientAutoJoin: connect failed", t);

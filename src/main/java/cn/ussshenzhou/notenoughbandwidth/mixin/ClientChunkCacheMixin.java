@@ -9,7 +9,12 @@ import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+//#if MC>=12005
 import net.minecraft.network.RegistryFriendlyByteBuf;
+//#else
+//$$ import cn.ussshenzhou.notenoughbandwidth.network.IndexSyncHandler;
+//$$ import net.minecraft.network.FriendlyByteBuf;
+//#endif
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +62,11 @@ public class ClientChunkCacheMixin {
             if (ChunkCacheManager.getClientCachedChunk(hash) != null) return;
 
             var inner = Unpooled.buffer(8192);
+            //#if MC>=12005
             var buf = new RegistryFriendlyByteBuf(inner, registryManager);
+            //#else
+            //$$ var buf = new FriendlyByteBuf(inner);
+            //#endif
             try {
                 chunkData.write(buf);
                 lightData.write(buf);
@@ -78,7 +87,11 @@ public class ClientChunkCacheMixin {
                     byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
                     if (bloomBytes != null) {
                         try {
+                            //#if MC>=12005
                             ClientPlayNetworking.send(new ChunkCacheManifestPayload(bloomBytes));
+                            //#else
+                            //$$ IndexSyncHandler.sendChunkedManifest(bloomBytes);
+                            //#endif
                         } catch (Exception e) {
                             LOGGER.warn("Failed to resend chunk cache manifest", e);
                         }

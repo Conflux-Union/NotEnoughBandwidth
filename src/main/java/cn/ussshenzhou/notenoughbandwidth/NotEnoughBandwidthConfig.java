@@ -35,6 +35,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
         add("minecraft:finish_configuration");
+        //#if MC>=12005
         add(PacketAggregationPacket.TYPE.id().toString());
         add(DictionarySyncPayload.TYPE.id().toString());
         add(IndexSyncPayload.TYPE.id().toString());
@@ -42,6 +43,15 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add(ChunkCacheManifestPayload.TYPE.id().toString());
         add(ChunkHashPayload.TYPE.id().toString());
         add(ChunkRequestPayload.TYPE.id().toString());
+        //#else
+        //$$ add(PacketAggregationPacket.CHANNEL.toString());
+        //$$ add(DictionarySyncPayload.CHANNEL.toString());
+        //$$ add(IndexSyncPayload.CHANNEL.toString());
+        //$$ add(NebAckPayload.CHANNEL.toString());
+        //$$ add(ChunkCacheManifestPayload.CHANNEL.toString());
+        //$$ add(ChunkHashPayload.CHANNEL.toString());
+        //$$ add(ChunkRequestPayload.CHANNEL.toString());
+        //#endif
         add("minecraft:login");
         add("minecraft:chat_command");
         add("minecraft:chat_command_signed");

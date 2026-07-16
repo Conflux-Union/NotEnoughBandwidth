@@ -28,14 +28,22 @@ public class DefaultChannelPipelineHelper {
     }
 
     @Nullable
+    //#if MC>=12005
     public static PacketEncoder<?> getPacketEncoder(DefaultChannelPipeline pipeline) {
+    //#else
+    //$$ public static PacketEncoder getPacketEncoder(DefaultChannelPipeline pipeline) {
+    //#endif
         try {
             Object head = HEAD.get(pipeline);
             Object tail = TAIL.get(pipeline);
             var ctx = (ChannelHandlerContext) NEXT.get(head);
             if (ctx == null) return null;
             while (ctx != null && ctx != tail) {
+                //#if MC>=12005
                 if (ctx.handler() instanceof PacketEncoder<?> encoder) {
+                //#else
+                //$$ if (ctx.handler() instanceof PacketEncoder encoder) {
+                //#endif
                     return encoder;
                 }
                 ctx = (ChannelHandlerContext) NEXT.get(ctx);
@@ -47,13 +55,21 @@ public class DefaultChannelPipelineHelper {
     }
 
     @Nullable
+    //#if MC>=12005
     public static PacketDecoder<?> getPacketDecoder(DefaultChannelPipeline pipeline) {
+    //#else
+    //$$ public static PacketDecoder getPacketDecoder(DefaultChannelPipeline pipeline) {
+    //#endif
         try {
             Object head = HEAD.get(pipeline);
             Object tail = TAIL.get(pipeline);
             var ctx = (ChannelHandlerContext) NEXT.get(head);
             while (ctx != null && ctx != tail) {
+                //#if MC>=12005
                 if (ctx.handler() instanceof PacketDecoder<?> decoder) {
+                //#else
+                //$$ if (ctx.handler() instanceof PacketDecoder decoder) {
+                //#endif
                     return decoder;
                 }
                 ctx = (ChannelHandlerContext) NEXT.get(ctx);

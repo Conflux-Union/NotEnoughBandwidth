@@ -32,18 +32,30 @@ public class Context implements Closeable {
     }
 
     public ByteBuffer compress(ByteBuffer raw) {
+        //#if MC>=12005
         int maxDstSize = (int) Zstd.compressBound(raw.remaining());
         var dst = ByteBuffer.allocateDirect(maxDstSize);
         compressCtx.compressDirectByteBufferStream(dst, raw, EndDirective.FLUSH);
         dst.flip();
         return dst;
+        //#else
+        //$$ // Stateless per-blob compression: AggregationManager.sendBatched() may
+        //$$ // serialize a payload, discard it (over the 1.20.1 size limit) and
+        //$$ // re-compress two halves — a streaming context would corrupt its shared
+        //$$ // stream state on the discarded attempt.
+        //$$ return compressCtx.compress(raw);
+        //#endif
     }
 
     public ByteBuffer decompress(ByteBuffer compressed, int originalSize) {
+        //#if MC>=12005
         var dst = ByteBuffer.allocateDirect(originalSize);
         decompressCtx.decompressDirectByteBufferStream(dst, compressed);
         dst.flip();
         return dst;
+        //#else
+        //$$ return decompressCtx.decompress(compressed, originalSize);
+        //#endif
     }
 
     @Override

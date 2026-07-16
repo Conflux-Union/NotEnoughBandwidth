@@ -21,7 +21,18 @@ public class ZstdHelper {
             .build();
 
     public static ByteBuf compress(Connection connection, ByteBuf raw) {
-        return Unpooled.wrappedBuffer(get(connection).compress(raw.nioBuffer()));
+        // zstd-jni's ByteBuffer entry points require direct buffers; the netty
+        // default allocator is usually direct, but not guaranteed on every platform.
+        if (raw.isDirect()) {
+            return Unpooled.wrappedBuffer(get(connection).compress(raw.nioBuffer()));
+        }
+        var directBuf = Unpooled.directBuffer(raw.readableBytes());
+        try {
+            raw.getBytes(raw.readerIndex(), directBuf);
+            return Unpooled.wrappedBuffer(get(connection).compress(directBuf.nioBuffer()));
+        } finally {
+            directBuf.release();
+        }
     }
 
     public static ByteBuf decompress(Connection connection, ByteBuf compressed, int originalSize) {
