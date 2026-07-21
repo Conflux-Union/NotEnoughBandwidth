@@ -7,16 +7,18 @@ import cn.ussshenzhou.notenoughbandwidth.mixin.ClientPlayNetworkHandlerInvoker;
 import cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager;
 import cn.ussshenzhou.notenoughbandwidth.stat.SystemTrafficMonitor;
 import cn.ussshenzhou.notenoughbandwidth.zstd.DictionaryManager;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.network.Connection;
 //#if MC>=12005
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 //#else
 //$$ import cn.ussshenzhou.notenoughbandwidth.chunkcache.PendingChunkQueue;
 //$$ import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
-//$$ import net.minecraft.network.Connection;
 //$$ import net.minecraft.network.FriendlyByteBuf;
 //$$
 //$$ import java.io.ByteArrayOutputStream;
@@ -35,11 +37,44 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.BitSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static cn.ussshenzhou.notenoughbandwidth.stat.SimpleStatManager.LOCAL;
 
 public class ModNetworking {
     private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Network");
+
+    // ChunkRequestPayload rate limit: shared by both version branches so a modified client
+    // can't force the server to keep resending arbitrary loaded chunks. Fixed per-connection
+    // window; weakKeys() + expireAfterWrite self-cleans without needing a disconnect hook.
+    private static final int CHUNK_REQUEST_BUDGET = 100;
+    private static final long CHUNK_REQUEST_WINDOW_SECONDS = 10;
+    private static final Cache<Connection, AtomicInteger> CHUNK_REQUEST_COUNTS = CacheBuilder.newBuilder()
+            .weakKeys()
+            .expireAfterWrite(CHUNK_REQUEST_WINDOW_SECONDS, TimeUnit.SECONDS)
+            .build();
+
+    /**
+     * Returns true if {@code connection} has exceeded its ChunkRequestPayload budget for the
+     * current window. Only the first request that crosses the budget in a window is logged,
+     * so the handler itself cannot be abused to spam the server log.
+     */
+    private static boolean chunkRequestOverBudget(Connection connection) {
+        AtomicInteger counter;
+        try {
+            counter = CHUNK_REQUEST_COUNTS.get(connection, AtomicInteger::new);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+        int count = counter.incrementAndGet();
+        if (count == CHUNK_REQUEST_BUDGET + 1) {
+            LOGGER.warn("Connection {} exceeded the chunk request rate limit ({} requests/{}s); dropping further requests until the window resets",
+                    connection.getRemoteAddress(), CHUNK_REQUEST_BUDGET, CHUNK_REQUEST_WINDOW_SECONDS);
+        }
+        return count > CHUNK_REQUEST_BUDGET;
+    }
 
     //#if MC>=12005
     public static void registerCommon() {
@@ -80,9 +115,20 @@ public class ModNetworking {
         // Client didn't have the chunk despite bloom-filter hit; resend full data.
         ServerPlayNetworking.registerGlobalReceiver(ChunkRequestPayload.TYPE, (payload, context) -> {
             ServerPlayer player = context.player();
+            if (chunkRequestOverBudget(player.connection.connection)) {
+                return;
+            }
             ServerLevel world = player.level();
             ChunkPos pos = new ChunkPos(payload.chunkX(), payload.chunkZ());
             world.getServer().execute(() -> {
+                // CachedChunkTrackingView.contains() also covers the DCC cache, so a chunk
+                // that recently left the view is still a legitimate request; anything else
+                // is a modified client harvesting chunks it should not have.
+                if (!player.getChunkTrackingView().contains(pos.x(), pos.z())) {
+                    LOGGER.warn("Rejected chunk request ({},{}) from {}: outside tracking view",
+                            pos.x(), pos.z(), player.getName().getString());
+                    return;
+                }
                 var chunk = world.getChunkSource().getChunkNow(pos.x(), pos.z());
                 if (chunk != null) {
                     BitSet lightMask = cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig.get().lightStripEnabled
@@ -275,9 +321,24 @@ public class ModNetworking {
     //$$     // Client didn't have the chunk despite bloom-filter hit; resend full data.
     //$$     ServerPlayNetworking.registerGlobalReceiver(ChunkRequestPayload.CHANNEL, (server, player, handler, buf, responseSender) -> {
     //$$         var payload = ChunkRequestPayload.read(new FriendlyByteBuf(buf.copy()));
+    //$$         if (chunkRequestOverBudget(handler.connection)) {
+    //$$             return;
+    //$$         }
     //$$         ServerLevel world = player.serverLevel();
     //$$         ChunkPos pos = new ChunkPos(payload.chunkX(), payload.chunkZ());
     //$$         server.execute(() -> {
+    //$$             // 1.20.1 has no ChunkTrackingView; approximate it with a chessboard-distance
+    //$$             // check against the player's chunk, view distance, and the DCC margin (the
+    //$$             // equivalent of CachedChunkTrackingView.contains() covering the DCC cache on
+    //$$             // newer versions), plus 1 chunk of slack for movement races.
+    //$$             ChunkPos playerPos = player.getLastSectionPos().chunk();
+    //$$             int viewDistance = server.getPlayerList().getViewDistance();
+    //$$             int dccDistance = cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig.get().dccDistance;
+    //$$             if (playerPos.getChessboardDistance(pos) > viewDistance + dccDistance + 1) {
+    //$$                 LOGGER.warn("Rejected chunk request ({},{}) from {}: outside view+DCC range",
+    //$$                         pos.x, pos.z, player.getName().getString());
+    //$$                 return;
+    //$$             }
     //$$             var chunk = world.getChunkSource().getChunkNow(pos.x, pos.z);
     //$$             if (chunk != null) {
     //$$                 BitSet lightMask = cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig.get().lightStripEnabled

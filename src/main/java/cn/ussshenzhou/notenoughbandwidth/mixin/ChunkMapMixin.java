@@ -76,9 +76,9 @@ public abstract class ChunkMapMixin {
                 var ticketType = nebDccTicket.get();
                 if (ticketType == null || ticketType.timeout() != ticks) {
                     //#if MC>=12110
-                    var newType = new TicketType(ticks, TicketType.FLAG_LOADING);
+                    var newType = new TicketType(ticks, TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_CAN_EXPIRE_IF_UNLOADED);
                     //#elseif MC>=12106
-                    //$$ var newType = new TicketType(ticks, false, TicketType.TicketUse.LOADING);
+                    //$$ var newType = new TicketType(ticks, false, TicketType.TicketUse.LOADING_AND_SIMULATION);
                     //#else
                     //$$ var newType = TicketType.<ChunkPos>create("neb_dcc",
                     //$$         java.util.Comparator.comparingLong(ChunkPos::toLong), ticks);

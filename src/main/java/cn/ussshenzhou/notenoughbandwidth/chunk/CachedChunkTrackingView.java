@@ -106,7 +106,12 @@ public class CachedChunkTrackingView implements ChunkTrackingView {
                 }
             }, chunkPos -> {
                 if (next.center().getChessboardDistance(chunkPos) <= chunkCacheDistance) {
-                    context.putTicket(chunkPos, chunkCacheTimeout * 20);
+                    // Anchor the ticket at the player, not the departed chunk: TicketStorage
+                    // dedupes/refreshes same-type tickets at the same pos, so this collapses
+                    // up to dccSizeLimit per-chunk tickets into one refreshed radius-1 ticket
+                    // that follows the player, instead of pinning every departed chunk's 3x3
+                    // area individually.
+                    context.putTicket(player.chunkPosition(), chunkCacheTimeout * 20);
                     cache.put(ChunkPos.pack(chunkPos.x(), chunkPos.z()), now);
                 }
             });
