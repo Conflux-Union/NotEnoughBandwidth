@@ -26,6 +26,13 @@ public class NotEnoughBandwidthConfig implements TConfig {
         add("minecraft:player_info_update");
         add("minecraft:player_info_remove");
     }};
+    // Players listed here get a per-connection Zstd Context that never reuses its
+    // streaming state (and never receives a dictionary), so every aggregate frame is a
+    // self-contained blob a replay/recording mod can decode on its own. Server-only.
+    // The zero UUID is a placeholder documenting the expected format; it matches no player.
+    public HashSet<String> playersDoNotUseContext = new HashSet<>() {{
+        add("00000000-0000-0000-0000-000000000000");
+    }};
     public boolean debugLog = false;
     public int compressionLevel = 6;
     public int contextLevel = 23;

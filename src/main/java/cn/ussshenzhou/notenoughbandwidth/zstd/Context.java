@@ -14,8 +14,12 @@ import java.nio.ByteBuffer;
 public class Context implements Closeable {
     private final ZstdCompressCtx compressCtx;
     private final ZstdDecompressCtx decompressCtx;
+    // Server-only replay-compat opt-out (see NotEnoughBandwidthConfig#playersDoNotUseContext):
+    // false means every frame must be a self-contained one-shot blob a replay/recording
+    // mod can decode without replaying the whole connection's packet history.
+    private final boolean useContext;
 
-    public Context(@Nullable byte[] dict) {
+    public Context(@Nullable byte[] dict, boolean useContext) {
         compressCtx = new ZstdCompressCtx();
         compressCtx.setLevel(NotEnoughBandwidthConfig.get().getCompressionLevel());
         compressCtx.setContentSize(false);
@@ -29,15 +33,19 @@ public class Context implements Closeable {
         if (dict != null) {
             decompressCtx.loadDict(dict);
         }
+        this.useContext = useContext;
     }
 
     public ByteBuffer compress(ByteBuffer raw) {
         //#if MC>=12005
-        int maxDstSize = (int) Zstd.compressBound(raw.remaining());
-        var dst = ByteBuffer.allocateDirect(maxDstSize);
-        compressCtx.compressDirectByteBufferStream(dst, raw, EndDirective.FLUSH);
-        dst.flip();
-        return dst;
+        if (useContext) {
+            int maxDstSize = (int) Zstd.compressBound(raw.remaining());
+            var dst = ByteBuffer.allocateDirect(maxDstSize);
+            compressCtx.compressDirectByteBufferStream(dst, raw, EndDirective.FLUSH);
+            dst.flip();
+            return dst;
+        }
+        return compressCtx.compress(raw);
         //#else
         //$$ // Stateless per-blob compression: AggregationManager.sendBatched() may
         //$$ // serialize a payload, discard it (over the 1.20.1 size limit) and

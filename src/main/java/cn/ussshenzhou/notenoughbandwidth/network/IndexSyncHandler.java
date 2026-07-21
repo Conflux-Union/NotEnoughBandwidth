@@ -65,11 +65,25 @@ public class IndexSyncHandler {
             var connection = handler.connection;
             ChunkCacheManager.removeServerBloomFilter(connection);
             AggregationManager.discardConnection(connection);
+            ZstdHelper.evict(connection);
         });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            // Send dictionary first so the client has it before compression starts.
+            var connection = handler.connection;
+            // Snapshot the dict once: this exact byte[] is pinned for the connection's
+            // Context AND sent below in the payload, so a trainAsync() completing right
+            // after this line can never desync the client's dict from the server's Context.
             byte[] dict = DictionaryManager.getDict();
+            boolean useContext = !NotEnoughBandwidthConfig.get().playersDoNotUseContext
+                    .contains(handler.player.getUUID().toString());
+            if (!useContext) {
+                // Dict-referencing frames are just as undecodable to a replay mod as
+                // stream-dependent ones, and client-compress/server-decompress must
+                // agree on the dict — so a no-context player gets no dict either.
+                dict = null;
+            }
+            ZstdHelper.pin(connection, dict, useContext);
+            // Send dictionary first so the client has it before compression starts.
             sender.sendPacket(new DictionarySyncPayload(dict));
 
             List<Identifier> types = collectRegisteredTypes();
@@ -82,9 +96,10 @@ public class IndexSyncHandler {
             // We wait for the client to send NebAckPayload before enabling the compression path.
             String serverId = NotEnoughBandwidthConfig.get().serverUUID;
             sender.sendPacket(new IndexSyncPayload(types, serverId));
-            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}), awaiting NEB ack",
+            LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}){}, awaiting NEB ack",
                     dict != null ? dict.length + " bytes" : "none",
-                    handler.player.getName().getString(), types.size(), serverId);
+                    handler.player.getName().getString(), types.size(), serverId,
+                    useContext ? "" : ", context reuse disabled (replay-compat)");
         });
     }
 
@@ -171,11 +186,25 @@ public class IndexSyncHandler {
     //$$         AggregationManager.discardConnection(connection);
     //$$         ModNetworking.clearManifestChunks(connection);
     //$$         PendingChunkQueue.discard(connection);
+    //$$         ZstdHelper.evict(connection);
     //$$     });
     //$$
     //$$     ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-    //$$         // Send dictionary first so the client has it before compression starts.
+    //$$         var connection = handler.connection;
+    //$$         // Snapshot the dict once: this exact byte[] is pinned for the connection's
+    //$$         // Context AND sent below in the payload, so a trainAsync() completing right
+    //$$         // after this line can never desync the client's dict from the server's Context.
     //$$         byte[] dict = DictionaryManager.getDict();
+    //$$         boolean useContext = !NotEnoughBandwidthConfig.get().playersDoNotUseContext
+    //$$                 .contains(handler.player.getUUID().toString());
+    //$$         if (!useContext) {
+    //$$             // Dict-referencing frames are just as undecodable to a replay mod as
+    //$$             // stream-dependent ones, and client-compress/server-decompress must
+    //$$             // agree on the dict — so a no-context player gets no dict either.
+    //$$             dict = null;
+    //$$         }
+    //$$         ZstdHelper.pin(connection, dict, useContext);
+    //$$         // Send dictionary first so the client has it before compression starts.
     //$$         FriendlyByteBuf dictBuf = PacketByteBufs.create();
     //$$         new DictionarySyncPayload(dict).write(dictBuf);
     //$$         sender.sendPacket(new ClientboundCustomPayloadPacket(DictionarySyncPayload.CHANNEL, dictBuf));
@@ -194,7 +223,6 @@ public class IndexSyncHandler {
     //$$         // Start buffering packets immediately so the initial chunk burst
     //$$         // is captured. Flush is deferred until NebAck arrives.
     //$$         AggregationManager.init();
-    //$$         var connection = handler.connection;
     //$$         NebConnectionRegistry.markPending(connection);
     //$$
     //$$         // Safety timeout: if NebAck never arrives (vanilla client without NEB),
@@ -210,9 +238,10 @@ public class IndexSyncHandler {
     //$$             }
     //$$         }, PENDING_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     //$$
-    //$$         LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}), buffering until NEB ack",
+    //$$         LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}){}, buffering until NEB ack",
     //$$                 dict != null ? dict.length + " bytes" : "none",
-    //$$                 handler.player.getName().getString(), types.size(), serverId);
+    //$$                 handler.player.getName().getString(), types.size(), serverId,
+    //$$                 useContext ? "" : ", context reuse disabled (replay-compat)");
     //$$     });
     //$$ }
     //$$

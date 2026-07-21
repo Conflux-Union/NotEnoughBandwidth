@@ -60,8 +60,10 @@ public class NotEnoughBandwidthClient implements ClientModInitializer {
             ZstdHelper.evict(conn);
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
-                ChunkCacheManager.onClientDisconnect());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            ZstdHelper.evict(handler.getConnection());
+            ChunkCacheManager.onClientDisconnect();
+        });
     }
 
     private static void maybeNotifyUpdate(Minecraft client) {
