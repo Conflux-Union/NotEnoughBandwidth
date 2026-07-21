@@ -55,6 +55,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
         //#if MC>=12005
         add(PacketAggregationPacket.TYPE.id().toString());
         add(DictionarySyncPayload.TYPE.id().toString());
+        add(VanillaPathsPayload.TYPE.id().toString());
         add(IndexSyncPayload.TYPE.id().toString());
         add(NebAckPayload.TYPE.id().toString());
         add(ChunkCacheManifestPayload.TYPE.id().toString());
@@ -63,6 +64,7 @@ public class NotEnoughBandwidthConfig implements TConfig {
         //#else
         //$$ add(PacketAggregationPacket.CHANNEL.toString());
         //$$ add(DictionarySyncPayload.CHANNEL.toString());
+        //$$ add(VanillaPathsPayload.CHANNEL.toString());
         //$$ add(IndexSyncPayload.CHANNEL.toString());
         //$$ add(NebAckPayload.CHANNEL.toString());
         //$$ add(ChunkCacheManifestPayload.CHANNEL.toString());

@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 //#if MC>=12005
 import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicReference;
 //#endif
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,8 +58,13 @@ public class IndexSyncHandler {
         }
     }
 
+    // Holds the vanilla path list from a VanillaPathsPayload until the IndexSyncPayload
+    // that immediately follows it on the same connection consumes it (see registerClient()).
+    private static final AtomicReference<List<String>> PENDING_VANILLA_PATHS = new AtomicReference<>();
+
     public static void registerServer() {
         PayloadTypeRegistry.clientboundPlay().register(DictionarySyncPayload.TYPE, DictionarySyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(VanillaPathsPayload.TYPE, VanillaPathsPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(IndexSyncPayload.TYPE, IndexSyncPayload.CODEC);
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
@@ -90,10 +96,14 @@ public class IndexSyncHandler {
             // Only init once on dedicated server — registered types don't change after startup,
             // and re-init would race with readers that don't hold the lock.
             if (!NamespaceIndexManager.ready()) {
-                NamespaceIndexManager.init(types);
+                NamespaceIndexManager.init(types, NamespaceIndexManager.vanillaPaths());
             }
             // Do NOT init AggregationManager or mark connection here.
             // We wait for the client to send NebAckPayload before enabling the compression path.
+            // Send the vanilla path list as its own packet, before IndexSyncPayload: an old
+            // client's IndexSyncPayload codec would disconnect on any trailing unread bytes,
+            // but silently discards an unrecognized channel like this one instead.
+            sender.sendPacket(new VanillaPathsPayload(NamespaceIndexManager.vanillaPaths()));
             String serverId = NotEnoughBandwidthConfig.get().serverUUID;
             sender.sendPacket(new IndexSyncPayload(types, serverId));
             LOGGER.info("Sent dictionary ({}) and index sync to {} ({} types, serverId={}){}, awaiting NEB ack",
@@ -105,6 +115,10 @@ public class IndexSyncHandler {
 
     public static void registerClient() {
         ClientPlayNetworking.registerGlobalReceiver(DictionarySyncPayload.TYPE, (payload, context) -> {
+            // Every NEB server sends this first in JOIN, so it scopes any stale
+            // vanilla_paths from a previous, disconnected-mid-handshake connection to
+            // exactly one handshake: dict (clear) -> vanilla_paths (set) -> index_sync (consume).
+            PENDING_VANILLA_PATHS.set(null);
             DictionaryManager.setDict(payload.dictionary());
             var conn = context.player().connection.connection;
             ZstdHelper.evict(conn);
@@ -115,10 +129,20 @@ public class IndexSyncHandler {
             }
         });
 
+        ClientPlayNetworking.registerGlobalReceiver(VanillaPathsPayload.TYPE, (payload, context) -> {
+            PENDING_VANILLA_PATHS.set(payload.paths());
+        });
+
         ClientPlayNetworking.registerGlobalReceiver(IndexSyncPayload.TYPE, (payload, context) -> {
             LOGGER.info("Received index sync from server ({} types, serverId={})",
                     payload.types().size(), payload.serverId());
-            NamespaceIndexManager.init(payload.types());
+            // Consume-once: a VanillaPathsPayload always immediately precedes the
+            // IndexSyncPayload that should use it (packet order is guaranteed per
+            // connection, including across proxy backend switches). Null (an old server
+            // never sends the channel, so nothing was ever stored) falls back to the
+            // local compile-time VANILLA_PATHS — no worse than before this payload existed.
+            List<String> vanillaPaths = PENDING_VANILLA_PATHS.getAndSet(null);
+            NamespaceIndexManager.init(payload.types(), vanillaPaths == null ? List.of() : vanillaPaths);
             AggregationManager.init();
             var connection = context.player().connection.connection;
             NebConnectionRegistry.markEnabled(connection);

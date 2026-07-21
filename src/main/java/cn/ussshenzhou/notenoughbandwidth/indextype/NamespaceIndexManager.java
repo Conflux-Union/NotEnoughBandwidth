@@ -60,12 +60,28 @@ public class NamespaceIndexManager {
             "clear_titles", "command_suggestions", "commands",
             "container_close", "container_set_content", "container_set_data", "container_set_slot",
             "cooldown", "custom_chat_completions",
-            "damage_event", "debug_sample", "delete_chat", "disguised_chat",
+            "damage_event",
+            //#if MC>=260100
+            "debug/block_value", "debug/chunk_value", "debug/entity_value", "debug/event",
+            //#endif
+            "debug_sample", "delete_chat", "disguised_chat",
             "entity_event", "entity_position_sync", "explode",
             "forget_level_chunk", "game_event",
-            "horse_screen_open", "hurt_animation", "initialize_border",
+            //#if MC>=260100
+            "game_rule_values", "game_test_highlight_pos",
+            //#endif
+            //#if MC>=260100
+            "mount_screen_open",
+            //#else
+            //$$ "horse_screen_open",
+            //#endif
+            "hurt_animation", "initialize_border",
             "level_chunk_with_light", "level_event", "level_particles", "light_update",
-            "login", "map_item_data", "merchant_offers",
+            "login",
+            //#if MC>=260100
+            "low_disk_space_warning",
+            //#endif
+            "map_item_data", "merchant_offers",
             "move_entity_pos", "move_entity_pos_rot", "move_minecart_along_track",
             "move_entity_rot", "move_vehicle",
             "open_book", "open_screen", "open_sign_editor",
@@ -94,13 +110,21 @@ public class NamespaceIndexManager {
             "reset_score", "ticking_state", "ticking_step",
             "set_cursor_item", "set_player_inventory",
             // C2S packets
-            "accept_teleportation", "block_entity_tag_query",
+            "accept_teleportation",
+            //#if MC>=260100
+            "attack",
+            //#endif
+            "block_entity_tag_query",
             "bundle_item_selected", "change_game_mode",
             "chat_ack", "chat_command", "chat_command_signed", "chat", "chat_session_update",
             "chunk_batch_received", "client_command", "client_tick_end",
             "command_suggestion", "configuration_acknowledged",
             "container_button_click", "container_click", "container_slot_state_changed",
-            "debug_sample_subscription",
+            //#if MC>=260100
+            "debug_subscription_request",
+            //#else
+            //$$ "debug_sample_subscription",
+            //#endif
             "edit_book", "entity_tag_query", "interact", "jigsaw_generate",
             "lock_difficulty",
             "move_player_pos", "move_player_pos_rot", "move_player_rot", "move_player_status_only",
@@ -109,13 +133,34 @@ public class NamespaceIndexManager {
             "recipe_book_change_settings", "recipe_book_seen_recipe",
             "rename_item", "seen_advancements", "select_trade",
             "set_beacon", "set_carried_item", "set_command_block", "set_command_minecart",
-            "set_creative_mode_slot", "set_jigsaw_block", "set_structure_block",
-            "set_test_block", "sign_update", "swing", "teleport_to_entity",
+            "set_creative_mode_slot",
+            //#if MC>=260100
+            "set_game_rule",
+            //#endif
+            "set_jigsaw_block", "set_structure_block",
+            "set_test_block", "sign_update",
+            //#if MC>=260100
+            "spectate_entity",
+            //#endif
+            "swing", "teleport_to_entity",
             "test_instance_block_action",
             "use_item_on", "use_item"
     );
 
-    public synchronized static void init(List<Identifier> types) {
+    //#if MC>=12005
+    /**
+     * The local compile-time vanilla path list, exposed so the JOIN handler can hand it
+     * to clients via VanillaPathsPayload instead of relying on both ends silently agreeing
+     * on the same hardcoded list (see {@link #init(List, List)}).
+     */
+    public static List<String> vanillaPaths() {
+        return VANILLA_PATHS;
+    }
+
+    public synchronized static void init(List<Identifier> types, List<String> vanillaPaths) {
+    //#else
+    //$$ public synchronized static void init(List<ResourceLocation> types) {
+    //#endif
         initialized = false;
         NAMESPACES.clear();
         PATHS.clear();
@@ -131,7 +176,11 @@ public class NamespaceIndexManager {
         NAMESPACES.add("ILLEGAL");
         PATHS.add(new ArrayList<>());
 
-        indexVanillaPackets(namespaceIndex);
+        //#if MC>=12005
+        indexVanillaPackets(namespaceIndex, vanillaPaths);
+        //#else
+        //$$ indexVanillaPackets(namespaceIndex);
+        //#endif
         indexCustomPayloads(types, namespaceIndex);
 
         if (LOGGER.isDebugEnabled()) {
@@ -148,8 +197,11 @@ public class NamespaceIndexManager {
     }
 
     //#if MC>=12005
-    private static void indexVanillaPackets(AtomicInteger namespaceIndex) {
-        VANILLA_PATHS.forEach(path -> fillSingle(namespaceIndex, Identifier.withDefaultNamespace(path)));
+    private static void indexVanillaPackets(AtomicInteger namespaceIndex, List<String> vanillaPaths) {
+        // Empty/null means "no list came from the peer" (either we are building the
+        // list to send, or we're talking to a pre-sync-safety build) — use our own.
+        List<String> paths = (vanillaPaths == null || vanillaPaths.isEmpty()) ? VANILLA_PATHS : vanillaPaths;
+        paths.forEach(path -> fillSingle(namespaceIndex, Identifier.withDefaultNamespace(path)));
     }
     //#else
     //$$ private static void indexVanillaPackets(AtomicInteger namespaceIndex) {
