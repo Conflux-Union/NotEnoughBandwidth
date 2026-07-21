@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.config;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.apache.commons.io.FileUtils;
@@ -10,8 +11,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 public class ConfigHelper {
@@ -19,6 +21,9 @@ public class ConfigHelper {
     private static final File CONFIG_DIR = Paths.get("config").toFile();
     private static final ConcurrentHashMap<Class<? extends TConfig>, TConfig> CACHE = new ConcurrentHashMap<>();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+    // Single-thread executor so concurrent saves cannot interleave writes to the same file.
+    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(
+            new ThreadFactoryBuilder().setNameFormat("NEB-Config-Save").setDaemon(true).build());
 
     private static void checkDir(File dir) {
         if (!dir.isDirectory()) {
@@ -77,7 +82,7 @@ public class ConfigHelper {
     private static <T extends TConfig> void saveConfigInternal(T config, File configFile) {
         // Snapshot JSON on the calling thread to avoid racing with concurrent mutations.
         String json = GSON.toJson(config);
-        CompletableFuture.runAsync(() -> {
+        EXECUTOR.execute(() -> {
             try {
                 FileUtils.write(configFile, json, StandardCharsets.UTF_8);
             } catch (IOException ignored) {
