@@ -6,11 +6,16 @@ import cn.ussshenzhou.notenoughbandwidth.config.TConfig;
 import cn.ussshenzhou.notenoughbandwidth.network.*;
 import com.google.gson.annotations.Expose;
 import net.minecraft.util.Mth;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 public class NotEnoughBandwidthConfig implements TConfig {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("NEB-Config");
 
     public String serverUUID = "";
     public boolean compatibleMode = false;
@@ -31,10 +36,15 @@ public class NotEnoughBandwidthConfig implements TConfig {
     public int chunkCacheMaxSizeMB = 2048;
     public boolean lightStripEnabled = false;
     public boolean checkUpdate = true;
+    public String maxPacketSize = "4MB";
 
     @Expose(serialize = false, deserialize = false)
     public static final HashSet<String> COMMON_BLOCK_LIST = new HashSet<>() {{
         add("minecraft:finish_configuration");
+        // A mid-game reconfiguration's terminal packet must reach the client on its
+        // own frame — aggregating it would prevent the vanilla protocol-swap
+        // handshake from ever firing.
+        add("minecraft:start_configuration");
         //#if MC>=12005
         add(PacketAggregationPacket.TYPE.id().toString());
         add(DictionarySyncPayload.TYPE.id().toString());
@@ -73,5 +83,53 @@ public class NotEnoughBandwidthConfig implements TConfig {
 
     public int getContextLevel() {
         return Mth.clamp(contextLevel, 21, 25);
+    }
+
+    // ConfigHelper's Gson is built without excludeFieldsWithoutExposeAnnotation(),
+    // so @Expose is not actually honored here — transient is what keeps this
+    // derived cache out of the saved JSON (and out of a loaded one).
+    private transient int maxPacketSizeByte = -1;
+
+    public int getMaxPacketSize() {
+        if (maxPacketSizeByte == -1) {
+            maxPacketSizeByte = parseByteSize(maxPacketSize);
+            int min = parseByteSize("2MB");
+            int max = parseByteSize("64MB");
+            if (maxPacketSizeByte < min || maxPacketSizeByte > max) {
+                LOGGER.error("maxPacketSize should be between 2MB and 64MB");
+            }
+            maxPacketSizeByte = Mth.clamp(maxPacketSizeByte, min, max);
+        }
+        return maxPacketSizeByte;
+    }
+
+    private static int parseByteSize(String s) {
+        var matcher = Pattern.compile("^([\\d.]+)\\s*(B|KB|MB)?$", Pattern.CASE_INSENSITIVE).matcher(s.trim());
+        if (!matcher.matches()) {
+            LOGGER.error("NEB: Invalid packet size: {} , use default 4MB instead.", s);
+            return parseByteSize("4MB");
+        }
+        double value;
+        try {
+            value = Double.parseDouble(matcher.group(1));
+        } catch (NumberFormatException e) {
+            // The regex allows multiple dots (e.g. "1.2.3"), which Double.parseDouble
+            // rejects; getMaxPacketSize() runs on every frame decode, so a malformed
+            // value here must fall back instead of throwing.
+            LOGGER.error("NEB: Invalid packet size: {} , use default 4MB instead.", s);
+            return parseByteSize("4MB");
+        }
+        String unit = matcher.group(2);
+        if (unit == null || "B".equalsIgnoreCase(unit)) {
+            return (int) value;
+        }
+        return (int) switch (unit.toUpperCase()) {
+            case "KB" -> value * 1024;
+            case "MB" -> value * 1024 * 1024;
+            default -> {
+                LOGGER.error("NEB: Invalid packet size: {} , use default 4MB instead.", s);
+                yield parseByteSize("4MB");
+            }
+        };
     }
 }

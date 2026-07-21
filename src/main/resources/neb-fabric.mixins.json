@@ -12,7 +12,9 @@
     "PlayerListMixin",
     "ChunkDataSenderMixin",
     "ChunkDataWriteMixin",
-    "LightDataWriteMixin"
+    "LightDataWriteMixin",
+    "Varint21FrameDecoderMixin",
+    "Varint21LengthFieldPrependerMixin"
   ],
   "client": [
     "ClientChunkCacheMixin",

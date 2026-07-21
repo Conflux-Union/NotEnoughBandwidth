@@ -224,67 +224,90 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public void handle(Connection conn) {
         this.connection = conn;
-
-        boolean compressed = data.readBoolean();
-        RegistryFriendlyByteBuf raw;
-        if (compressed) {
-            int size = data.readVarInt();
-            raw = new RegistryFriendlyByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size), data.registryAccess());
-        } else {
-            raw = new RegistryFriendlyByteBuf(data.retain(), data.registryAccess());
-        }
-        SimpleStatManager.inRaw(raw.readableBytes());
-
-        var decoder = DefaultChannelPipelineHelper.getPacketDecoder(
-                (DefaultChannelPipeline) conn.channel.pipeline());
-        if (decoder == null) {
-            LOGGER.error("Failed to get PacketDecoder for inbound protocol");
-            data.release();
-            raw.release();
-            return;
-        }
-        var inboundProtocol = decoder.protocolInfo;
-        var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
-        var subRawSizes = new ArrayList<Integer>();
-        int totalSubRaw = 0;
+        // Released exactly once in the finally below, on every path: normal
+        // completion, the oversize rejection, the missing-decoder bailout, or
+        // any exception thrown while reading the header / decompressing / parsing.
+        RegistryFriendlyByteBuf raw = null;
         try {
-            int prevReaderIdx = raw.readerIndex();
-            while (raw.readableBytes() > 0) {
-                var type = CustomPacketPrefixHelper.read(raw);
-                var size = raw.readVarInt();
-                var subData = new RegistryFriendlyByteBuf(raw.readRetainedSlice(size), data.registryAccess());
-                int newIdx = raw.readerIndex();
-                int subRaw = newIdx - prevReaderIdx;
-                prevReaderIdx = newIdx;
-                if (type == null) {
-                    LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
-                    subData.release();
-                    continue;
+            boolean compressed = data.readBoolean();
+            if (compressed) {
+                int size = data.readVarInt();
+                // Count the wrapper's own header bytes (compress flag + size varint)
+                // as inbound raw traffic, matching upstream's bakedSize accounting.
+                SimpleStatManager.inRaw(innerBlobSize - data.readableBytes());
+                if (size <= 0 || size > NotEnoughBandwidthConfig.get().getMaxPacketSize()) {
+                    // A malicious client can otherwise force Context.decompress to
+                    // ByteBuffer.allocateDirect(size) with an attacker-chosen size.
+                    LOGGER.error("Rejected aggregate: decompressed size {} from {} is invalid or exceeds maxPacketSize",
+                            size, conn.getRemoteAddress());
+                    return;
                 }
-                packetsToHandle.add(new AggregatedDecodePacket(type, subData));
-                subRawSizes.add(subRaw);
-                totalSubRaw += subRaw;
+                raw = new RegistryFriendlyByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size), data.registryAccess());
+            } else {
+                SimpleStatManager.inRaw(innerBlobSize - data.readableBytes());
+                raw = new RegistryFriendlyByteBuf(data.retain(), data.registryAccess());
+            }
+            SimpleStatManager.inRaw(raw.readableBytes());
+
+            var decoder = DefaultChannelPipelineHelper.getPacketDecoder(
+                    (DefaultChannelPipeline) conn.channel.pipeline());
+            if (decoder == null) {
+                LOGGER.error("Failed to get PacketDecoder for inbound protocol");
+                return;
+            }
+            var inboundProtocol = decoder.protocolInfo;
+            var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
+            var subRawSizes = new ArrayList<Integer>();
+            int totalSubRaw = 0;
+            try {
+                int prevReaderIdx = raw.readerIndex();
+                while (raw.readableBytes() > 0) {
+                    var type = CustomPacketPrefixHelper.read(raw);
+                    var size = raw.readVarInt();
+                    var subData = new RegistryFriendlyByteBuf(raw.readRetainedSlice(size), data.registryAccess());
+                    int newIdx = raw.readerIndex();
+                    int subRaw = newIdx - prevReaderIdx;
+                    prevReaderIdx = newIdx;
+                    if (type == null) {
+                        LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
+                        subData.release();
+                        continue;
+                    }
+                    packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+                    subRawSizes.add(subRaw);
+                    totalSubRaw += subRaw;
+                }
+            } catch (Exception e) {
+                // A malformed blob (readVarInt overrun, readRetainedSlice past readable)
+                // can throw mid-loop. Release every slice already retained above before
+                // rethrowing, so the exception still kills the connection but nothing leaks.
+                for (var collected : packetsToHandle) {
+                    collected.getData().release();
+                }
+                throw e;
+            }
+
+            recordPerTypeIn(inboundProtocol.flow(), packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
+
+            for (var sub : packetsToHandle) {
+                try {
+                    Packet<?> decoded = sub.decode(inboundProtocol);
+                    if (decoded != null) {
+                        var listener = conn.getPacketListener();
+                        if (listener != null) {
+                            ((Packet) decoded).handle(listener);
+                        }
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
+                } finally {
+                    sub.getData().release();
+                }
             }
         } finally {
             data.release();
-            raw.release();
-        }
-
-        recordPerTypeIn(inboundProtocol.flow(), packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
-
-        for (var sub : packetsToHandle) {
-            try {
-                Packet<?> decoded = sub.decode(inboundProtocol);
-                if (decoded != null) {
-                    var listener = conn.getPacketListener();
-                    if (listener != null) {
-                        ((Packet) decoded).handle(listener);
-                    }
-                }
-            } catch (Exception e) {
-                LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
-            } finally {
-                sub.getData().release();
+            if (raw != null) {
+                raw.release();
             }
         }
     }
@@ -292,70 +315,93 @@ public class PacketAggregationPacket implements CustomPacketPayload {
     //$$ @SuppressWarnings({"rawtypes", "unchecked"})
     //$$ public void handle(Connection conn) {
     //$$     this.connection = conn;
-    //$$
-    //$$     boolean compressed = data.readBoolean();
-    //$$     FriendlyByteBuf raw;
-    //$$     if (compressed) {
-    //$$         int size = data.readVarInt();
-    //$$         raw = new FriendlyByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size));
-    //$$     } else {
-    //$$         raw = new FriendlyByteBuf(data.retain());
-    //$$     }
-    //$$     SimpleStatManager.inRaw(raw.readableBytes());
-    //$$
-    //$$     var decoder = DefaultChannelPipelineHelper.getPacketDecoder(
-    //$$             (DefaultChannelPipeline) conn.channel.pipeline());
-    //$$     if (decoder == null) {
-    //$$         LOGGER.error("Failed to get PacketDecoder for inbound protocol");
-    //$$         data.release();
-    //$$         raw.release();
-    //$$         return;
-    //$$     }
-    //$$     // Access-widened PacketDecoder.flow gives the inbound direction.
-    //$$     PacketFlow decoderFlow = decoder.flow;
-    //$$     var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
-    //$$     var subRawSizes = new ArrayList<Integer>();
-    //$$     int totalSubRaw = 0;
+    //$$     // Released exactly once in the finally below, on every path: normal
+    //$$     // completion, the oversize rejection, the missing-decoder bailout, or
+    //$$     // any exception thrown while reading the header / decompressing / parsing.
+    //$$     FriendlyByteBuf raw = null;
     //$$     try {
-    //$$         int prevReaderIdx = raw.readerIndex();
-    //$$         while (raw.readableBytes() > 0) {
-    //$$             var type = CustomPacketPrefixHelper.read(raw);
-    //$$             var size = raw.readVarInt();
-    //$$             var subData = new FriendlyByteBuf(raw.readRetainedSlice(size));
-    //$$             int newIdx = raw.readerIndex();
-    //$$             int subRaw = newIdx - prevReaderIdx;
-    //$$             prevReaderIdx = newIdx;
-    //$$             if (type == null) {
-    //$$                 LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
-    //$$                 subData.release();
-    //$$                 continue;
+    //$$         boolean compressed = data.readBoolean();
+    //$$         if (compressed) {
+    //$$             int size = data.readVarInt();
+    //$$             // Count the wrapper's own header bytes (compress flag + size varint)
+    //$$             // as inbound raw traffic, matching upstream's bakedSize accounting.
+    //$$             SimpleStatManager.inRaw(innerBlobSize - data.readableBytes());
+    //$$             if (size <= 0 || size > NotEnoughBandwidthConfig.get().getMaxPacketSize()) {
+    //$$                 // A malicious client can otherwise force Context.decompress to
+    //$$                 // ByteBuffer.allocateDirect(size) with an attacker-chosen size.
+    //$$                 LOGGER.error("Rejected aggregate: decompressed size {} from {} is invalid or exceeds maxPacketSize",
+    //$$                         size, conn.getRemoteAddress());
+    //$$                 return;
     //$$             }
-    //$$             packetsToHandle.add(new AggregatedDecodePacket(type, subData));
-    //$$             subRawSizes.add(subRaw);
-    //$$             totalSubRaw += subRaw;
+    //$$             raw = new FriendlyByteBuf(ZstdHelper.decompress(conn, data.retainedDuplicate(), size));
+    //$$         } else {
+    //$$             SimpleStatManager.inRaw(innerBlobSize - data.readableBytes());
+    //$$             raw = new FriendlyByteBuf(data.retain());
+    //$$         }
+    //$$         SimpleStatManager.inRaw(raw.readableBytes());
+    //$$
+    //$$         var decoder = DefaultChannelPipelineHelper.getPacketDecoder(
+    //$$                 (DefaultChannelPipeline) conn.channel.pipeline());
+    //$$         if (decoder == null) {
+    //$$             LOGGER.error("Failed to get PacketDecoder for inbound protocol");
+    //$$             return;
+    //$$         }
+    //$$         // Access-widened PacketDecoder.flow gives the inbound direction.
+    //$$         PacketFlow decoderFlow = decoder.flow;
+    //$$         var packetsToHandle = new ArrayList<AggregatedDecodePacket>();
+    //$$         var subRawSizes = new ArrayList<Integer>();
+    //$$         int totalSubRaw = 0;
+    //$$         try {
+    //$$             int prevReaderIdx = raw.readerIndex();
+    //$$             while (raw.readableBytes() > 0) {
+    //$$                 var type = CustomPacketPrefixHelper.read(raw);
+    //$$                 var size = raw.readVarInt();
+    //$$                 var subData = new FriendlyByteBuf(raw.readRetainedSlice(size));
+    //$$                 int newIdx = raw.readerIndex();
+    //$$                 int subRaw = newIdx - prevReaderIdx;
+    //$$                 prevReaderIdx = newIdx;
+    //$$                 if (type == null) {
+    //$$                     LOGGER.error("Unknown packet type index in aggregated blob — skipping {} bytes", size);
+    //$$                     subData.release();
+    //$$                     continue;
+    //$$                 }
+    //$$                 packetsToHandle.add(new AggregatedDecodePacket(type, subData));
+    //$$                 subRawSizes.add(subRaw);
+    //$$                 totalSubRaw += subRaw;
+    //$$             }
+    //$$         } catch (Exception e) {
+    //$$             // A malformed blob (readVarInt overrun, readRetainedSlice past readable)
+    //$$             // can throw mid-loop. Release every slice already retained above before
+    //$$             // rethrowing, so the exception still kills the connection but nothing leaks.
+    //$$             for (var collected : packetsToHandle) {
+    //$$                 collected.getData().release();
+    //$$             }
+    //$$             throw e;
+    //$$         }
+    //$$
+    //$$         recordPerTypeIn(decoderFlow, packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
+    //$$
+    //$$         for (var sub : packetsToHandle) {
+    //$$             try {
+    //$$                 Packet<?> decoded = sub.decode(decoderFlow);
+    //$$                 if (decoded != null) {
+    //$$                     var listener = conn.getPacketListener();
+    //$$                     if (listener != null) {
+    //$$                         ((Packet) decoded).handle(listener);
+    //$$                     }
+    //$$                 }
+    //$$             } catch (RunningOnDifferentThreadException e) {
+    //$$                 // Expected: the packet re-scheduled itself onto the main thread.
+    //$$             } catch (Exception e) {
+    //$$                 LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
+    //$$             } finally {
+    //$$                 sub.getData().release();
+    //$$             }
     //$$         }
     //$$     } finally {
     //$$         data.release();
-    //$$         raw.release();
-    //$$     }
-    //$$
-    //$$     recordPerTypeIn(decoderFlow, packetsToHandle, subRawSizes, totalSubRaw, this.innerBlobSize);
-    //$$
-    //$$     for (var sub : packetsToHandle) {
-    //$$         try {
-    //$$             Packet<?> decoded = sub.decode(decoderFlow);
-    //$$             if (decoded != null) {
-    //$$                 var listener = conn.getPacketListener();
-    //$$                 if (listener != null) {
-    //$$                     ((Packet) decoded).handle(listener);
-    //$$                 }
-    //$$             }
-    //$$         } catch (RunningOnDifferentThreadException e) {
-    //$$             // Expected: the packet re-scheduled itself onto the main thread.
-    //$$         } catch (Exception e) {
-    //$$             LOGGER.error("Failed to handle decoded packet {}", sub.getType(), e);
-    //$$         } finally {
-    //$$             sub.getData().release();
+    //$$         if (raw != null) {
+    //$$             raw.release();
     //$$         }
     //$$     }
     //$$ }

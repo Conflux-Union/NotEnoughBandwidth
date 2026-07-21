@@ -30,7 +30,20 @@ public final class NebMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        return !disabled;
+        if (disabled) {
+            return false;
+        }
+        //#if MC<12005
+        //$$ // Varint21FrameDecoder/Prepender have a different shape on 1.20.1 (no
+        //$$ // copyVarint, no standalone VarInt class) and the aggregation path
+        //$$ // already keeps blobs under the vanilla limit via sendBatched, so these
+        //$$ // two mixins are compiled (to keep this file buildable) but never applied.
+        //$$ if (mixinClassName.endsWith(".Varint21FrameDecoderMixin")
+        //$$         || mixinClassName.endsWith(".Varint21LengthFieldPrependerMixin")) {
+        //$$     return false;
+        //$$ }
+        //#endif
+        return true;
     }
 
     @Override
