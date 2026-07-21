@@ -40,10 +40,28 @@ public class DictionaryManager {
             if (Files.exists(DICT_PATH)) {
                 currentDict = Files.readAllBytes(DICT_PATH);
                 LOGGER.info("Loaded trained dictionary from disk ({} bytes)", currentDict.length);
+            } else {
+                // No locally trained dict yet. Reset explicitly: this instance may still be
+                // holding a remote server's dict from a previous session (received via
+                // DictionarySyncPayload while connected as a client). That dict must not
+                // leak into a fresh local hosting session, or it would mask the need to
+                // sample and train one for this session.
+                currentDict = null;
             }
         } catch (IOException e) {
             LOGGER.error("Failed to load dictionary from disk", e);
         }
+    }
+
+    /**
+     * Called when the server this instance was hosting (dedicated or integrated) stops.
+     * Prevents a client that stops hosting a world and then joins a remote server from
+     * continuing to sample its own outgoing packets. Does NOT clear {@code currentDict}:
+     * a later remote JOIN overwrites it via the DictionarySyncPayload handshake anyway,
+     * and a later local host re-runs {@link #loadFromDisk()}.
+     */
+    public static void markServerStopped() {
+        serverSide = false;
     }
 
     public static byte[] getDict() {
@@ -126,8 +144,17 @@ public class DictionaryManager {
                     trainer.addSample(sample);
                 }
                 byte[] dict = trainer.trainSamples();
-                currentDict = dict;
                 saveToDisk(dict);
+                // Only adopt the trained dict as the live in-memory dict if this instance
+                // is still acting as the dictionary server. Training runs asynchronously
+                // and can outlive the hosting session (e.g. the player stops hosting and
+                // joins a remote server before training finishes) — clobbering a dict
+                // already received from that remote server would desync compression for
+                // the new connection. The result is still persisted to disk so the next
+                // local hosting session picks it up via loadFromDisk.
+                if (serverSide) {
+                    currentDict = dict;
+                }
                 LOGGER.info("Dictionary trained and saved ({} bytes from {} samples)", dict.length, snapshot.size());
             } catch (Exception e) {
                 LOGGER.error("Dictionary training failed", e);
