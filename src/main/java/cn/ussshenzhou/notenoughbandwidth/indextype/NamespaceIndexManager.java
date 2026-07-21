@@ -4,7 +4,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.Tuple;
 //#if MC<12005
 //$$ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 //$$ import net.minecraft.network.ConnectionProtocol;
@@ -276,10 +275,12 @@ public class NamespaceIndexManager {
         return pathMap != null && pathMap.containsKey(type.getPath());
     }
 
-    public static Tuple<Integer, Integer> getCheckedIndex(Identifier type) {
+    public static Index getCheckedIndex(Identifier type) {
         int namespaceId = NAMESPACE_MAP.getInt(type.getNamespace());
-        return new Tuple<>(namespaceId, PATH_MAPS.get(namespaceId).getInt(type.getPath()));
+        return new Index(namespaceId, PATH_MAPS.get(namespaceId).getInt(type.getPath()));
     }
+
+    public record Index(int getA, int getB) {}
 
     public static Identifier getIdentifier(int namespaceIndex, int pathIndex) {
         if (!initialized) return null;

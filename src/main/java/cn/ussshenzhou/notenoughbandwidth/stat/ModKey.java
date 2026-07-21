@@ -38,7 +38,11 @@ public class ModKey {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (statKey.consumeClick()) {
-                Minecraft.getInstance().setScreen(new StatScreen());
+                //#if MC>=260200
+                Minecraft.getInstance().gui.setScreen(new StatScreen());
+                //#else
+                //$$ Minecraft.getInstance().setScreen(new StatScreen());
+                //#endif
             }
         });
     }

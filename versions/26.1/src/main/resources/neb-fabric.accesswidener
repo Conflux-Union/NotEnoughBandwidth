@@ -1,0 +1,17 @@
+accessWidener v2 official
+
+# ProtocolInfoBuilder internals
+# (Mojang 26.1: Implementation record no longer exposes classToId/byId/idGetter;
+#  aggregation code now dispatches through ProtocolInfo.codec() which is public API.)
+accessible class net/minecraft/network/protocol/ProtocolInfoBuilder$CodecEntry
+
+# PacketEncoder / PacketDecoder protocol-info field
+accessible field net/minecraft/network/PacketEncoder protocolInfo Lnet/minecraft/network/ProtocolInfo;
+accessible field net/minecraft/network/PacketDecoder protocolInfo Lnet/minecraft/network/ProtocolInfo;
+
+# Connection channel field
+accessible field net/minecraft/network/Connection channel Lio/netty/channel/Channel;
+
+# Common packet listener connection fields
+accessible field net/minecraft/server/network/ServerCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;
+accessible field net/minecraft/client/multiplayer/ClientCommonPacketListenerImpl connection Lnet/minecraft/network/Connection;

@@ -1,6 +1,6 @@
 # 网络包优化 | Not Enough Bandwidth (NEB) — Fabric 移植版
 
-**Fabric 模组，适用于 Minecraft 26.1** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重、区块光照剥离大幅削减网络流量。
+**Fabric 模组，适用于 Minecraft 26.2** — 通过精简包头、聚合 + Zstd 压缩、延迟区块缓存、持久化区块去重、区块光照剥离大幅削减网络流量。
 
 > **如需适配更多版本或遇到问题**，欢迎提交 [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues)、加入 QQ 群 **362669270**（[邀请链接](https://qm.qq.com/q/Ch5CGWyjjc)），或发送邮件至 [support@rms.net.cn](mailto:support@rms.net.cn)。
 
@@ -132,8 +132,8 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 ## 安装
 
 依赖要求：
-- Minecraft 1.20.1、1.21.1 – 26.1（下载与游戏版本匹配的 jar）
-- Fabric Loader（1.20.1 需 >= 0.15，1.21.1 需 >= 0.16，26.1 需 >= 0.18.4）
+- Minecraft 1.20.1、1.21.1 – 26.2（下载与游戏版本匹配的 jar）
+- Fabric Loader（1.20.1 需 >= 0.15，1.21.1 需 >= 0.16，26.1 需 >= 0.18.4，26.2 需 >= 0.19.3）
 - Fabric API
 
 **客户端和服务端均需安装 NEB。** 若有客户端未安装 NEB，服务端会自动对该连接回退至原版行为。
@@ -143,7 +143,7 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 所有受支持的 Minecraft 版本都从本分支统一构建，基于
 [ReplayMod preprocessor](https://github.com/ReplayMod/preprocessor)：
 
-- `src/main` 是唯一源码，面向最新版本（26.1）编写。
+- `src/main` 是唯一源码，面向最新版本（26.2）编写。
 - 版本差异通过 `//#if MC>=<ver>` 注释条件、`@Pattern` 模板
   （`util/VersionPatterns.java`，处理方法/字段等形状变化）以及
   `versions/mapping-*.txt`（映射连接推断不出的改名）表达。
@@ -157,7 +157,7 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 ```bash
 ./gradlew build collectJars   # 构建全部版本，jar 输出到 build/libs/
 ./gradlew :1.21.4:build       # 构建单个版本
-./gradlew benchmark           # 运行带宽基准测试（26.1）
+./gradlew benchmark           # 运行带宽基准测试（26.2）
 ```
 
 ## 版权和许可
