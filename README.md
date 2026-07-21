@@ -148,9 +148,11 @@ All supported Minecraft versions build from this single branch using the
 - Version differences use `//#if MC>=<ver>` comment conditionals, `@Pattern`
   templates (`util/VersionPatterns.java`) for shape changes, and
   `versions/mapping-*.txt` for renames the mapping join cannot infer.
-- Per-version settings (loader/fabric-api versions, mod version) live in
-  `versions/<mc>/gradle.properties`; per-version resource overrides (such as
-  the access widener) live in `versions/<mc>/src/main/resources/`.
+- Gradle subprojects are auto-discovered from the `versions/<mc>/` directories
+  and share `common.gradle`. Per-version settings (loader/fabric-api versions,
+  MC dependency range) live in `versions/<mc>/gradle.properties`; per-version
+  resource overrides (such as the access widener) live in
+  `versions/<mc>/src/main/resources/`.
 
 Common commands:
 

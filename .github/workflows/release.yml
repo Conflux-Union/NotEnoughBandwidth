@@ -21,9 +21,9 @@ jobs:
       - name: Resolve version, tag and matrix
         id: meta
         run: |
-          MOD_VERSION=$(grep '^mod_version=' gradle.properties | cut -d'=' -f2)
+          MOD_VERSION=$(grep '^version=' gradle.properties | cut -d'=' -f2)
           if [ -z "$MOD_VERSION" ]; then
-            echo "::error::mod_version not found in root gradle.properties"
+            echo "::error::version not found in root gradle.properties"
             exit 1
           fi
           echo "mod_version=$MOD_VERSION" >> $GITHUB_OUTPUT

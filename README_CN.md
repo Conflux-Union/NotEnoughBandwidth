@@ -147,7 +147,8 @@ Zstd 压缩等级（整数 1-19），默认为 6。数值越高压缩率越好�
 - 版本差异通过 `//#if MC>=<ver>` 注释条件、`@Pattern` 模板
   （`util/VersionPatterns.java`，处理方法/字段等形状变化）以及
   `versions/mapping-*.txt`（映射连接推断不出的改名）表达。
-- 每个版本的配置（loader/fabric-api 版本、mod 版本号）在
+- Gradle 子项目由 `versions/<mc>/` 目录自动发现，共用 `common.gradle`。
+  每个版本的配置（loader/fabric-api 版本、MC 依赖范围）在
   `versions/<mc>/gradle.properties`；按版本覆盖的资源（如 access widener）
   在 `versions/<mc>/src/main/resources/`。
 

@@ -1,323 +1,50 @@
-// Shared build script applied to every versions/<mc> subproject (see settings.gradle).
 plugins {
-    id 'maven-publish'
+    id 'net.fabricmc.fabric-loom' version '1.15-SNAPSHOT' apply false
+    id 'com.replaymod.preprocess-root' version '221276c7d4'
+    id 'com.replaymod.preprocess' version '221276c7d4' apply false
 }
-
-// MC 26.1+ ships unobfuscated with official names; older versions are obfuscated
-// and compiled against Mojang official mappings. Loom 1.15 splits these into two
-// plugin ids: net.fabricmc.fabric-loom (no-remap) vs net.fabricmc.fabric-loom-remap.
-boolean unobfuscated = (project.name.split('\\.')[0] as int) >= 26
-apply plugin: unobfuscated ? 'net.fabricmc.fabric-loom' : 'net.fabricmc.fabric-loom-remap'
-apply plugin: 'com.replaymod.preprocess'
-
-// Gradle 9 shim: the preprocessor resolves its own 'preprocess-mojangMappings'
-// dependencyScope directly (hard error on Gradle 9, deprecated on 8). Re-point the
-// merge task at a legal resolvable view; the plugin's illegal provider is discarded
-// before it is ever queried. Only exists on obfuscated versions adjacent to 26.1+.
-def mojangScope = configurations.findByName('preprocess-mojangMappings')
-if (mojangScope != null) {
-    def mojangResolver = configurations.resolvable('preprocess-mojangMappings-resolver') {
-        extendsFrom(mojangScope)
-    }
-    // Must run after the plugin's own afterEvaluate (which registers the task);
-    // configuring via named() appends after the registration action, so our legal
-    // provider replaces the illegal one instead of being overwritten by it.
-    afterEvaluate {
-        if ('mergeDestinationNamedAndMojangMappings' in tasks.names) {
-            tasks.named('mergeDestinationNamedAndMojangMappings').configure {
-                mojangMappings.fileProvider(mojangResolver.flatMap { it.elements }.map { it.iterator().next().asFile })
-            }
-        }
-    }
-}
-
-int mcVersion = project.mcVersion  // injected by the preprocess plugin from the root version graph
-boolean isMainProject = project.name == rootProject.file('versions/mainProject').text.trim()
 
 preprocess {
-    // Shape-change templates (method vs field, constructors) applied at remap time.
-    patternAnnotation.set('cn.ussshenzhou.notenoughbandwidth.util.Pattern')
+    strictExtraMappings = true
+
+    // Version graph, derived from the versions/<mc> directories. Ints encode
+    // major*10000 + minor*100 + patch, so source conditions can be written as
+    // e.g. `//#if MC>=26.1` (= 260100); the modern two-part scheme (26.1)
+    // parses as major.minor with patch 0.
+    // mappings arg: non-null = obfuscated (joined via intermediary/mojmap),
+    // null = unobfuscated (26.1+ ships official names; no intermediary, so
+    // those links join by shared mojang names instead).
+    def nodes = []
+    file('versions').eachDir { dir ->
+        def parts = dir.name.split(/\./)
+        int major = parts[0] as int
+        int minor = parts.length > 1 ? parts[1] as int : 0
+        int patch = parts.length > 2 ? parts[2] as int : 0
+        nodes << createNode(dir.name, major * 10000 + minor * 100 + patch, major >= 26 ? null : 'mojang')
+    }
+    nodes.sort { it.mcVersion }
+
+    // Link newest -> oldest, so versions/mapping-<newer>-<older>.txt files keep
+    // newer names in the left column. Pairwise intermediary joins already capture
+    // most renames; an extra-mappings file exists only where the join falls short
+    // (absent file = no extra mappings for that link).
+    for (int i = nodes.size() - 1; i > 0; --i) {
+        def extraMappings = file("versions/mapping-${nodes[i].project}-${nodes[i - 1].project}.txt")
+        nodes[i].link(nodes[i - 1], extraMappings.exists() ? extraMappings : null)
+    }
 }
 
-// mod_version is global (root gradle.properties); the +<mc> suffix keeps the
-// seven jars distinct when collectJars gathers them into one directory.
-version = "${project.mod_version}+${project.name}"
-group = project.maven_group
-
-base {
-    archivesName = project.archives_base_name
+// Aggregates every version's mod jar into the root build/libs for CI.
+def collectJars = tasks.register('collectJars', Copy) {
+    group = 'build'
+    description = 'Collect all per-version mod jars into build/libs.'
+    into layout.buildDirectory.dir('libs')
 }
-
-repositories {
-    mavenCentral()
-}
-
-loom {
-    // The main project compiles the root src/ directly; other versions use a
-    // physical per-version copy (loom reads the AW before preprocessing runs).
-    accessWidenerPath = isMainProject
-            ? rootProject.file("src/main/resources/neb-fabric.accesswidener")
-            : file("src/main/resources/neb-fabric.accesswidener")
-
-    if (isMainProject) {
-        runs {
-            // Server-side benchmark run: drives the scenario + writes CSV.
-            benchmark {
-                server()
-                runDir "run-bench"
-                ideConfigGenerated false
-                property "neb.benchMode", project.findProperty("neb.benchMode") ?: ""
-                property "neb.benchScenario", project.findProperty("neb.benchScenario") ?: ""
-                property "neb.benchOutput", project.findProperty("neb.benchOutput") ?: ""
-                property "neb.benchTicks", project.findProperty("neb.benchTicks") ?: "1200"
-                property "neb.disableMod", project.findProperty("neb.disableMod") ?: "false"
-                property "fabric.log.disableAnsi", "true"
-            }
-            // Client-side benchmark run: real Minecraft client, auto-joins the bench server.
-            benchmarkClient {
-                client()
-                runDir "run-bench-client"
-                ideConfigGenerated false
-                property "neb.benchClientAutoJoin", project.findProperty("neb.benchClientAutoJoin") ?: ""
-                property "neb.benchMode", project.findProperty("neb.benchMode") ?: ""
-                property "neb.disableMod", project.findProperty("neb.disableMod") ?: "false"
-                property "fabric.log.disableAnsi", "true"
-            }
+subprojects { p ->
+    p.afterEvaluate {
+        def jarTask = p.tasks.findByName('remapJar') ?: p.tasks.findByName('jar')
+        if (jarTask != null) {
+            collectJars.configure { from(jarTask) }
         }
-    }
-}
-
-dependencies {
-    minecraft "com.mojang:minecraft:${project.name}"
-    if (unobfuscated) {
-        // No mappings dependency: 26.1+ is unobfuscated.
-        implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-        implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-    } else {
-        mappings loom.officialMojangMappings()
-        modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-        modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-    }
-
-    include implementation("com.github.luben:zstd-jni:1.5.6-9")
-    include implementation("org.iq80.leveldb:leveldb-api:0.12")
-    include implementation("org.iq80.leveldb:leveldb:0.12")
-}
-
-processResources {
-    inputs.property "version", project.version
-    inputs.property "minecraft_dependency", project.minecraft_dependency
-    inputs.property "java_version", project.java_version
-    filteringCharset "UTF-8"
-
-    filesMatching("fabric.mod.json") {
-        expand version: project.version,
-               minecraft_dependency: project.minecraft_dependency,
-               loader_dependency: project.loader_dependency,
-               java_version: project.java_version
-    }
-    filesMatching("neb-fabric.mixins.json") {
-        expand mixin_java_level: "JAVA_${project.java_version}"
-    }
-}
-
-def targetJavaVersion = Integer.parseInt(project.java_version)
-tasks.withType(JavaCompile).configureEach {
-    it.options.encoding = "UTF-8"
-    it.options.release = targetJavaVersion
-}
-
-java {
-    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
-    sourceCompatibility = javaVersion
-    targetCompatibility = javaVersion
-    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
-    withSourcesJar()
-}
-
-jar {
-    from(rootProject.file("LICENSE")) {
-        rename { "${it}_${project.archives_base_name}" }
-    }
-}
-
-publishing {
-    publications {
-        create("mavenJava", MavenPublication) {
-            artifactId = project.archives_base_name
-            from components.java
-        }
-    }
-    repositories {
-    }
-}
-
-if (isMainProject) {
-    // -----------------------------------------------------------------------------
-    // Benchmark orchestrator: 3 modes x 2 scenarios = 6 run pairs.
-    // Each pair spawns TWO child JVMs:
-    //   - server JVM: runs the dedicated server + scenario driver + wire byte counter.
-    //   - client JVM: runs real Minecraft, auto-joins via BenchClientAutoJoin.
-    // Using the real client (not a hand-rolled protocol proxy) is the whole point:
-    // traffic reflects what an actual player produces.
-    // -----------------------------------------------------------------------------
-    tasks.register('benchmark') {
-        group = 'verification'
-        description = 'Run the NEB CI bandwidth benchmark (3 modes x 2 scenarios).'
-        dependsOn build
-        doLast {
-            def modes = (project.findProperty('neb.benchModes') ?: 'neb,zlib,raw').split(',')
-            def scenarios = (project.findProperty('neb.benchScenarios') ?: 'roam,entities').split(',')
-            def outDir = rootProject.file("build/benchmark")
-            outDir.mkdirs()
-            def runDir = project.file("run-bench")
-            def runDirClient = project.file("run-bench-client")
-            def wrapper = org.gradle.internal.os.OperatingSystem.current().isWindows()
-                    ? 'gradlew.bat' : './gradlew'
-            def rng = new Random()
-            scenarios.each { scenario ->
-                modes.each { mode ->
-                    def csv = new File(outDir, "${scenario}-${mode}.csv").absolutePath
-                    int port = 30000 + rng.nextInt(5000)
-                    boolean disableMod = (mode != 'neb')
-                    logger.lifecycle("[benchmark] ${scenario} / ${mode} -> ${csv} (port ${port}, disableMod=${disableMod})")
-
-                    // Fresh world state for every run. Only wipe subdirs (not runDir itself)
-                    // so we don't race with filesystem observers and end up with a trashed cwd.
-                    runDir.mkdirs()
-                    runDirClient.mkdirs()
-                    project.delete(new File(runDir, 'world'))
-                    project.delete(new File(runDir, 'world_nether'))
-                    project.delete(new File(runDir, 'world_the_end'))
-                    project.delete(new File(runDir, 'config'))
-                    // Wipe client state that could affect handshake between matrix cells.
-                    project.delete(new File(runDirClient, 'saves'))
-                    project.delete(new File(runDirClient, 'config'))
-                    project.delete(new File(runDirClient, 'servers.dat'))
-                    project.delete(new File(runDirClient, 'servers.dat_old'))
-                    project.delete(new File(runDirClient, 'neb-chunk-cache'))
-                    new File(runDir, 'eula.txt').text = "eula=true\n"
-                    def threshold = (mode == 'zlib') ? '256' : '-1'
-                    new File(runDir, 'server.properties').text = """\
-server-port=${port}
-online-mode=false
-network-compression-threshold=${threshold}
-level-name=world
-level-seed=12345
-level-type=minecraft\\:normal
-spawn-protection=0
-view-distance=10
-simulation-distance=10
-allow-flight=true
-enable-command-block=false
-motd=NEB Benchmark
-max-players=2
-enforce-whitelist=false
-white-list=false
-generate-structures=false
-sync-chunk-writes=false
-enable-jmx-monitoring=false
-enable-status=false
-enable-query=false
-rcon.port=0
-query.port=0
-broadcast-console-to-ops=false
-broadcast-rcon-to-ops=false
-""".stripIndent()
-
-                    // Start the server JVM first. --no-daemon keeps the process attached.
-                    def ticks = project.findProperty('neb.benchTicks') ?: '1200'
-                    def serverCmd = [wrapper, "${project.path}:runBenchmark",
-                                     "-Pneb.benchMode=${mode}",
-                                     "-Pneb.benchScenario=${scenario}",
-                                     "-Pneb.benchOutput=${csv}",
-                                     "-Pneb.benchTicks=${ticks}",
-                                     "-Pneb.disableMod=${disableMod}",
-                                     '--no-daemon', '--console=plain']
-                    def srvPb = new ProcessBuilder(serverCmd as String[])
-                    srvPb.directory(rootProject.projectDir)
-                    srvPb.redirectErrorStream(true)
-                    def srvProc = srvPb.start()
-                    def srvPump = new Thread({
-                        srvProc.inputStream.withReader('UTF-8') { reader ->
-                            String line
-                            while ((line = reader.readLine()) != null) {
-                                println "  S| ${line}"
-                            }
-                        }
-                    } as Runnable, "bench-srv-stdout")
-                    srvPump.daemon = true
-                    srvPump.start()
-
-                    // Wait for TCP port to accept connections before launching the client.
-                    def srvReady = false
-                    def readyDeadline = System.currentTimeMillis() + 300_000
-                    while (System.currentTimeMillis() < readyDeadline) {
-                        try {
-                            def sock = new Socket()
-                            sock.connect(new java.net.InetSocketAddress('127.0.0.1', port), 1000)
-                            sock.close()
-                            srvReady = true
-                            break
-                        } catch (Exception ignored) {
-                            if (!srvProc.isAlive()) break
-                            Thread.sleep(500)
-                        }
-                    }
-                    if (!srvReady) {
-                        srvProc.destroyForcibly()
-                        throw new GradleException("Server for ${scenario}/${mode} never opened port ${port}")
-                    }
-                    logger.lifecycle("[benchmark] ${scenario}/${mode}: server listening, launching client")
-
-                    def clientCmd = [wrapper, "${project.path}:runBenchmarkClient",
-                                     "-Pneb.benchMode=${mode}",
-                                     "-Pneb.benchClientAutoJoin=127.0.0.1:${port}",
-                                     "-Pneb.disableMod=${disableMod}",
-                                     '--no-daemon', '--console=plain']
-                    def cliPb = new ProcessBuilder(clientCmd as String[])
-                    cliPb.directory(rootProject.projectDir)
-                    cliPb.redirectErrorStream(true)
-                    def cliProc = cliPb.start()
-                    def cliPump = new Thread({
-                        cliProc.inputStream.withReader('UTF-8') { reader ->
-                            String line
-                            while ((line = reader.readLine()) != null) {
-                                println "  C| ${line}"
-                            }
-                        }
-                    } as Runnable, "bench-cli-stdout")
-                    cliPump.daemon = true
-                    cliPump.start()
-
-                    int srvRc = srvProc.waitFor()
-                    logger.lifecycle("[benchmark] ${scenario}/${mode}: server exited rc=${srvRc}")
-
-                    long clientDeadline = System.currentTimeMillis() + 60_000
-                    while (cliProc.isAlive() && System.currentTimeMillis() < clientDeadline) {
-                        Thread.sleep(500)
-                    }
-                    if (cliProc.isAlive()) {
-                        logger.warn("[benchmark] ${scenario}/${mode}: client did not exit; killing")
-                        cliProc.destroyForcibly()
-                    }
-                    int cliRc = cliProc.waitFor()
-                    logger.lifecycle("[benchmark] ${scenario}/${mode}: client exited rc=${cliRc}")
-
-                    if (srvRc != 0) {
-                        throw new GradleException("runBenchmark ${scenario}/${mode} server exited ${srvRc}")
-                    }
-                }
-            }
-            logger.lifecycle("[benchmark] done. CSVs in ${outDir}")
-        }
-    }
-
-    // Convenience: plot CSVs after a benchmark run.
-    tasks.register('benchmarkPlot', Exec) {
-        group = 'verification'
-        description = 'Render benchmark CSVs to PNG/PDF via scripts/plot_benchmark.py.'
-        workingDir rootProject.projectDir
-        commandLine 'python', 'scripts/plot_benchmark.py', 'build/benchmark'
     }
 }

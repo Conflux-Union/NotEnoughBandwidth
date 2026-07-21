@@ -23,13 +23,12 @@ plugins {
 }
 
 rootProject.name = 'NotEnoughBandwidth'
-rootProject.buildFileName = 'root.gradle'
 
-// One subproject per supported Minecraft version; all share build.gradle.
-['1.20.1', '1.21.1', '1.21.4', '1.21.6', '1.21.10', '1.21.11', '26.1'].each { v ->
-    include ":$v"
-    project(":$v").with {
-        projectDir = file("versions/$v")
-        buildFileName = '../../build.gradle'
-    }
+// One subproject per versions/<mc> directory; all share common.gradle.
+file('versions').eachDir { final File dir ->
+    final String version = ":$dir.name"
+    include version
+    final ProjectDescriptor projectDescriptor = project(version)
+    projectDescriptor.projectDir = dir
+    projectDescriptor.buildFileName = '../../common.gradle'
 }

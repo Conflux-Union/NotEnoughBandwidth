@@ -13,7 +13,7 @@ on:
       - 'gradle.properties'
       - 'versions/**'
       - 'build.gradle'
-      - 'root.gradle'
+      - 'common.gradle'
       - 'settings.gradle'
       - '.github/workflows/benchmark.yml'
       - 'scripts/plot_benchmark.py'
