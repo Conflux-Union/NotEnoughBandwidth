@@ -6,7 +6,11 @@ import net.minecraft.server.level.ServerPlayer;
 //#if MC>=12104
 import net.minecraft.world.entity.EntitySpawnReason;
 //#endif
-import net.minecraft.world.entity.EntityType;
+//#if MC>=260200
+import net.minecraft.world.entity.EntityTypes;
+//#else
+//$$ import net.minecraft.world.entity.EntityType;
+//#endif
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.GameType;
@@ -56,8 +60,10 @@ public final class EntitiesScenario implements BenchScenario {
             double angle = (Math.PI * 2.0 * i) / COUNT;
             double x = CENTER_X + Math.cos(angle) * RING_RADIUS;
             double z = CENTER_Z + Math.sin(angle) * RING_RADIUS;
-            //#if MC>=12104
-            Villager v = EntityType.VILLAGER.create(world, EntitySpawnReason.EVENT);
+            //#if MC>=260200
+            Villager v = EntityTypes.VILLAGER.create(world, EntitySpawnReason.EVENT);
+            //#elseif MC>=12104
+            //$$ Villager v = EntityType.VILLAGER.create(world, EntitySpawnReason.EVENT);
             //#else
             //$$ Villager v = EntityType.VILLAGER.create(world);
             //#endif

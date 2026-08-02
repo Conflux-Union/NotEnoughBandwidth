@@ -1,6 +1,6 @@
 # Not Enough Bandwidth (NEB) — Fabric Port
 
-**Fabric mod for Minecraft 26.1** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, persistent client-side chunk deduplication, and chunk light stripping.
+**Fabric mod for Minecraft 26.2** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, persistent client-side chunk deduplication, and chunk light stripping.
 
 > **Need support or a port for another version?**
 > Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
@@ -133,8 +133,8 @@ Whether to strip chunk light data from server chunk packets and recompute it on 
 ## Installation
 
 Requires:
-- Minecraft 1.20.1, 1.21.1 – 26.1 (download the jar matching your version)
-- Fabric Loader (>= 0.15 on 1.20.1, >= 0.16 on 1.21.1, >= 0.18.4 on 26.1)
+- Minecraft 1.20.1, 1.21.1 – 26.2 (download the jar matching your version)
+- Fabric Loader (>= 0.15 on 1.20.1, >= 0.16 on 1.21.1, >= 0.18.4 on 26.1, >= 0.19.3 on 26.2)
 - Fabric API
 
 **Both client and server must install NEB.** When a client without NEB connects, the server falls back to vanilla behavior for that connection.
@@ -144,7 +144,7 @@ Requires:
 All supported Minecraft versions build from this single branch using the
 [ReplayMod preprocessor](https://github.com/ReplayMod/preprocessor):
 
-- `src/main` is the source of truth, written against the newest version (26.1).
+- `src/main` is the source of truth, written against the newest version (26.2).
 - Version differences use `//#if MC>=<ver>` comment conditionals, `@Pattern`
   templates (`util/VersionPatterns.java`) for shape changes, and
   `versions/mapping-*.txt` for renames the mapping join cannot infer.
@@ -159,7 +159,7 @@ Common commands:
 ```bash
 ./gradlew build collectJars   # build every version; jars land in build/libs/
 ./gradlew :1.21.4:build       # build a single version
-./gradlew benchmark           # run the bandwidth benchmark (26.1)
+./gradlew benchmark           # run the bandwidth benchmark (26.2)
 ```
 
 ## License
