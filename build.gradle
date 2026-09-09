@@ -48,3 +48,10 @@ subprojects { p ->
         }
     }
 }
+
+def buildAndGather = tasks.register('buildAndGather') {
+    group = 'build'
+    description = 'Build all version subprojects and collect their mod jars into build/libs.'
+    dependsOn collectJars
+    subprojects.each { p -> dependsOn("${p.path}:build") }
+}
