@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ClientChunkLightRecomputeMixin {
 
     @Inject(method = "applyLightData", at = @At("TAIL"))
-    //#if MC>=12002
+    //#if MC>=12102
     private void nebRecomputeStrippedLight(int x, int z, ClientboundLightUpdatePacketData lightData, boolean trustEdges, CallbackInfo ci) {
     //#else
     //$$ private void nebRecomputeStrippedLight(int x, int z, ClientboundLightUpdatePacketData lightData, CallbackInfo ci) {
