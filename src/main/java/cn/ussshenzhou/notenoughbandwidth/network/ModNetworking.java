@@ -228,7 +228,11 @@ public class ModNetworking {
                     if (world != null) {
                         // 26.1: ClientLevel.enqueueChunkUpdate is gone; just run on the client thread.
                         net.minecraft.client.Minecraft.getInstance().execute(() -> {
+                            //#if MC>=12102
                             invoker.nebReadLightData(x, z, lightData, false);
+                            //#else
+                            //$$ invoker.nebReadLightData(x, z, lightData);
+                            //#endif
                             var worldChunk = world.getChunkSource().getChunkNow(x, z);
                             if (worldChunk != null) {
                                 invoker.nebScheduleRenderChunk(worldChunk, x, z);
