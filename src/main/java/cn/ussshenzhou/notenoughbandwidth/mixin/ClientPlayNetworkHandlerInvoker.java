@@ -17,7 +17,7 @@ public interface ClientPlayNetworkHandlerInvoker {
     @Invoker("updateLevelChunk")
     void nebLoadChunk(int x, int z, ClientboundLevelChunkPacketData chunkData);
 
-    //#if MC>=12002
+    //#if MC>=12102
     @Invoker("applyLightData")
     void nebReadLightData(int x, int z, ClientboundLightUpdatePacketData lightData, boolean bl);
     //#else
