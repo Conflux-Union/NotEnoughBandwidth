@@ -1,7 +1,7 @@
 plugins {
     id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT' apply false
-    id 'com.replaymod.preprocess-root' version '221276c7d4'
-    id 'com.replaymod.preprocess' version '221276c7d4' apply false
+    id 'com.replaymod.preprocess-root' version '221276c7d43'
+    id 'com.replaymod.preprocess' version '221276c7d43' apply false
 }
 
 preprocess {

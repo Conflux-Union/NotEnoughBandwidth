@@ -11,7 +11,10 @@ pluginManagement {
     resolutionStrategy {
         eachPlugin {
             if (requested.id.id in ['com.replaymod.preprocess', 'com.replaymod.preprocess-root']) {
-                useModule("com.github.replaymod:preprocessor:${requested.version}")
+                // Canonical jitpack coordinates; the com.github.replaymod:preprocessor
+                // compat path serves an empty jar for this multi-module repo, and the
+                // originally pinned 221276c7d4 artifacts were evicted from jitpack.
+                useModule("com.github.replaymod.preprocessor:preprocessor:${requested.version}")
             }
         }
     }
