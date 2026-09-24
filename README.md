@@ -3,7 +3,7 @@
 **Fabric mod for Minecraft 26.2** — Network bandwidth optimization through packet header indexing, aggregation + Zstd compression, delayed chunk caching, persistent client-side chunk deduplication, and chunk light stripping.
 
 > **Need support or a port for another version?**
-> Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [support@rms.net.cn](mailto:support@rms.net.cn).
+> Open an [issue](https://github.com/RMS-Server/NotEnoughBandwidth/issues), join QQ group **362669270** ([invite link](https://qm.qq.com/q/Ch5CGWyjjc)), or email [contact@cxu.org.cn](mailto:contact@cxu.org.cn).
 
 > This is an unofficial Fabric port of the original [NeoForge mod](https://github.com/USS-Shenzhou/NotEnoughBandwidth) by USS_Shenzhou.
 > If you want to contribute to the upstream project, please discuss with USS_Shenzhou on [Discord](https://discord.gg/ZAn7U2BJpb) first.
