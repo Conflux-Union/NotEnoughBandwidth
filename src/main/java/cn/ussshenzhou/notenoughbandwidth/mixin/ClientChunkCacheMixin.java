@@ -4,6 +4,7 @@ import cn.ussshenzhou.notenoughbandwidth.NotEnoughBandwidthConfig;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkCacheManager;
 import cn.ussshenzhou.notenoughbandwidth.chunkcache.ChunkHashUtil;
 import cn.ussshenzhou.notenoughbandwidth.network.ChunkCacheManifestPayload;
+import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -84,6 +85,14 @@ public class ClientChunkCacheMixin {
             if (ChunkCacheManager.drainAndShouldResend()) {
                 ChunkCacheManager.evictAndRebuildIfNeeded();
                 Minecraft.getInstance().execute(() -> {
+                    // Handshake gate: never push the manifest to a server that has not
+                    // completed the NEB handshake (IndexSync received) — a vanilla server
+                    // kicks the client on custom payloads over 32 KiB (#12). Checked here,
+                    // at send time, so a proxy server switch after this task was scheduled
+                    // still blocks the send (INIT marks the connection disabled).
+                    if (!NebConnectionRegistry.isEnabled(handler.getConnection())) {
+                        return;
+                    }
                     byte[] bloomBytes = ChunkCacheManager.getClientBloomFilterBytes();
                     if (bloomBytes != null) {
                         try {

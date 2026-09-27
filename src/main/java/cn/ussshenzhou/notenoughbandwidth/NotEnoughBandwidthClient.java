@@ -58,6 +58,11 @@ public class NotEnoughBandwidthClient implements ClientModInitializer {
             NebConnectionRegistry.markDisabled(conn);
             AggregationManager.discardConnection(conn);
             ZstdHelper.evict(conn);
+            // The chunk cache DB belongs to the previous backend. Without this,
+            // a switch to a non-NEB backend keeps isClientEnabled() true and the
+            // manifest resend path kicks the client on a 32 KiB decode error (#12).
+            // A NEB backend reopens it when its IndexSync handshake arrives.
+            ChunkCacheManager.onClientDisconnect();
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {

@@ -16,6 +16,9 @@ import java.util.WeakHashMap;
  * Later versions never mark PENDING, so isActive() degenerates to isEnabled().
  * <p>
  * Client side: a connection is marked enabled when the server sends IndexSyncPayload.
+ * This is the NEB handshake contract: the client MUST NOT send any neb: serverbound
+ * payload over a connection that is not enabled — a vanilla server kicks the client
+ * on custom payloads it cannot decode (e.g. the oversized chunk cache manifest, #12).
  * <p>
  * Backed by WeakHashMaps so dead connections are GC'd automatically.
  */

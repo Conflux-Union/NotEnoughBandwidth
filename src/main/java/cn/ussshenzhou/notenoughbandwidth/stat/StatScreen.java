@@ -1,5 +1,6 @@
 package cn.ussshenzhou.notenoughbandwidth.stat;
 
+import cn.ussshenzhou.notenoughbandwidth.network.NebConnectionRegistry;
 import cn.ussshenzhou.notenoughbandwidth.network.StatQueryPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -51,15 +52,20 @@ public class StatScreen extends Screen {
     public void tick() {
         super.tick();
         if (tick % 10 == 0) {
-            try {
-                //#if MC>=12005
-                ClientPlayNetworking.send(new StatQueryPayload());
-                //#else
-                //$$ var buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
-                //$$ new StatQueryPayload().write(buf);
-                //$$ ClientPlayNetworking.send(StatQueryPayload.CHANNEL, buf);
-                //#endif
-            } catch (Exception ignored) {
+            // Only query servers that completed the NEB handshake; a vanilla server
+            // cannot answer and silently discards the payload anyway.
+            var connection = this.minecraft.getConnection();
+            if (connection != null && NebConnectionRegistry.isEnabled(connection.getConnection())) {
+                try {
+                    //#if MC>=12005
+                    ClientPlayNetworking.send(new StatQueryPayload());
+                    //#else
+                    //$$ var buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+                    //$$ new StatQueryPayload().write(buf);
+                    //$$ ClientPlayNetworking.send(StatQueryPayload.CHANNEL, buf);
+                    //#endif
+                } catch (Exception ignored) {
+                }
             }
             actualC = "↓ Inbound  "
                     + getReadableSpeed((long) LOCAL.inboundSpeedBaked().averageIn1s())
